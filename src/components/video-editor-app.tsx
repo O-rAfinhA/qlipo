@@ -26,6 +26,7 @@ import { readMediaDuration, formatBytes } from "@/lib/browser-media";
 import { exportPresets, secondsLabel, summarizeComposition } from "@/lib/media-rules";
 import type { ExportPreset, RenderJob, UploadValidationResponse } from "@/lib/types";
 import { useEditorStore, usePresetMetadata } from "@/store/editor-store";
+import { UserButton } from "@clerk/nextjs";
 
 async function validateFiles(files: File[]) {
   const response = await fetch("/api/uploads/validar", {
@@ -514,6 +515,8 @@ export function VideoEditorApp() {
             </span>
           )}
         </div>
+        <div className="h-3.5 w-px bg-white/[0.08]" />
+        <UserButton appearance={{ elements: { avatarBox: "h-7 w-7" } }} />
       </header>
 
       {/* ── Restore session banner ──────────────────────────────────────── */}
