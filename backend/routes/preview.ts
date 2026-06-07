@@ -1,0 +1,68 @@
+import { Router } from "express";
+import { mkdir, unlink } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+import { randomUUID } from "crypto";
+import { downloadToFile, uploadBuffer, generateDownloadUrl } from "../server/r2-client";
+import { Ffmpeg } from "../server/ffmpeg-runtime";
+
+const router = Router();
+
+router.get("/media/preview", async (req, res) => {
+  const r2Key = req.query.r2Key as string;
+  if (!r2Key) {
+    res.status(400).json({ error: "r2Key e obrigatorio." });
+    return;
+  }
+
+  try {
+    const previewKey = `previews/${Buffer.from(r2Key).toString("base64url").slice(0, 32)}.mp4`;
+
+    // Try to serve existing preview from R2
+    try {
+      const downloadUrl = await generateDownloadUrl(previewKey, 3600);
+      res.redirect(302, downloadUrl);
+      return;
+    } catch {
+      // Preview not yet generated, continue
+    }
+
+    // Download original file to /tmp
+    const workDir  = join(tmpdir(), "qlipo-preview", randomUUID());
+    await mkdir(workDir, { recursive: true });
+    const ext      = r2Key.split(".").pop() ?? "mp4";
+    const srcPath  = join(workDir, `source.${ext}`);
+    const outPath  = join(workDir, "preview.mp4");
+
+    await downloadToFile(r2Key, srcPath);
+
+    // Generate preview with FFmpeg
+    await new Promise<void>((resolve, reject) => {
+      Ffmpeg(srcPath)
+        .videoCodec("libx264")
+        .audioCodec("aac")
+        .outputOptions(["-movflags +faststart", "-pix_fmt yuv420p", "-preset veryfast", "-crf 23"])
+        .size("1280x?")
+        .on("end", () => resolve())
+        .on("error", (err) => reject(err))
+        .save(outPath);
+    });
+
+    // Upload preview to R2
+    const { readFile } = await import("fs/promises");
+    const buffer = await readFile(outPath);
+    await uploadBuffer(previewKey, buffer, "video/mp4");
+
+    // Cleanup
+    await unlink(srcPath).catch(() => undefined);
+    await unlink(outPath).catch(() => undefined);
+
+    const downloadUrl = await generateDownloadUrl(previewKey, 3600);
+    res.redirect(302, downloadUrl);
+  } catch (error) {
+    console.error("[preview]", error);
+    res.status(500).json({ error: "Erro ao gerar preview." });
+  }
+});
+
+export default router;

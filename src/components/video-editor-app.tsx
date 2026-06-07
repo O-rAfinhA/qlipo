@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { AlertCircle, CheckCircle2, Download, Film, FolderOpen, LoaderCircle, Music4, Sparkles, Upload, Wand2 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 
 import { PreviewPlayer } from "@/components/preview-player";
 import { MediaThumbnail } from "@/components/media-thumbnail";
@@ -28,10 +29,12 @@ import type { ExportPreset, RenderJob, UploadValidationResponse } from "@/lib/ty
 import { useEditorStore, usePresetMetadata } from "@/store/editor-store";
 import { UserButton } from "@clerk/nextjs";
 
-async function validateFiles(files: File[]) {
-  const response = await fetch("/api/uploads/validar", {
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+
+async function validateFiles(files: File[], token: string) {
+  const response = await fetch(`${BACKEND_URL}/api/uploads/validar`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       files: files.map((file) => ({ name: file.name, sizeBytes: file.size, mimeType: file.type })),
     }),
@@ -39,16 +42,38 @@ async function validateFiles(files: File[]) {
   return (await response.json()) as UploadValidationResponse;
 }
 
-async function uploadFiles(files: File[]): Promise<Record<string, { serverPath: string; previewUrl?: string }>> {
-  const formData = new FormData();
-  files.forEach((f) => formData.append("files", f));
-  const response = await fetch("/api/uploads", { method: "POST", body: formData });
-  if (!response.ok) throw new Error("Falha no upload dos arquivos.");
-  const result = (await response.json()) as { files: { name: string; serverPath: string; previewUrl?: string }[] };
-  return Object.fromEntries(result.files.map((f) => [f.name, { serverPath: f.serverPath, previewUrl: f.previewUrl }]));
+async function uploadFiles(files: File[], token: string): Promise<Record<string, { r2Key: string; previewUrl?: string }>> {
+  // Request presigned URLs for all files at once
+  const urlsRes = await fetch(`${BACKEND_URL}/api/upload-urls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ files: files.map((f) => ({ filename: f.name, contentType: f.type || "application/octet-stream" })) }),
+  });
+  if (!urlsRes.ok) throw new Error("Falha ao obter URLs de upload.");
+  const { files: urlData } = (await urlsRes.json()) as { files: { filename: string; uploadUrl: string; r2Key: string }[] };
+
+  // Upload each file directly to R2
+  await Promise.all(
+    files.map((file) => {
+      const entry = urlData.find((u) => u.filename === file.name);
+      if (!entry) throw new Error(`URL nao encontrada para ${file.name}`);
+      return fetch(entry.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+    }),
+  );
+
+  return Object.fromEntries(
+    urlData.map(({ filename, r2Key }) => {
+      const isVideo = files.find((f) => f.name === filename)?.type.startsWith("video/");
+      return [filename, {
+        r2Key,
+        previewUrl: isVideo ? `${BACKEND_URL}/api/media/preview?r2Key=${encodeURIComponent(r2Key)}` : undefined,
+      }];
+    }),
+  );
 }
 
 export function VideoEditorApp() {
+  const { getToken } = useAuth();
   const inputRef        = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const sourceRef       = useRef<EventSource | null>(null);
@@ -277,18 +302,19 @@ export function VideoEditorApp() {
     setUploading(true);
     setErrorMessage(undefined);
     try {
-      const [durations, serverPaths] = await Promise.all([
+      const token = await getToken() ?? "";
+      const [durations, r2Paths] = await Promise.all([
         Promise.all(files.map(readMediaDuration)),
-        uploadFiles(files),
+        uploadFiles(files, token),
       ]);
       const enhanced = files.map((file, i) =>
         Object.assign(file, {
           durationSeconds: durations[i],
-          serverPath: serverPaths[file.name]?.serverPath,
-          previewUrl: serverPaths[file.name]?.previewUrl,
+          r2Key: r2Paths[file.name]?.r2Key,
+          previewUrl: r2Paths[file.name]?.previewUrl,
         }),
       );
-      const validation = await validateFiles(files);
+      const validation = await validateFiles(files, token);
       ingestFiles(enhanced, validation);
       setErrorMessage(
         validation.files.some((e) => !e.valid) ? "Alguns arquivos foram rejeitados." : undefined,
@@ -407,9 +433,10 @@ export function VideoEditorApp() {
 
   async function handleRender() {
     setProcessingState({ processing: true, progress: 5, progressMessage: "Criando job de renderizacao", downloadUrl: undefined });
-    const response = await fetch("/api/renders", {
+    const token = await getToken() ?? "";
+    const response = await fetch(`${BACKEND_URL}/api/renders`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         preset, media, visuals, audios, mediaOrder,
         bpm: bpm > 0 ? bpm : undefined,
@@ -421,7 +448,7 @@ export function VideoEditorApp() {
     setProcessingState({ activeJobId: payload.jobId });
 
     sourceRef.current?.close();
-    const source = new EventSource(`/api/renders/${payload.jobId}/stream`);
+    const source = new EventSource(`${BACKEND_URL}/api/renders/${payload.jobId}/stream`);
     sourceRef.current = source;
 
     source.onmessage = (event) => {

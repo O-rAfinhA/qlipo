@@ -1,10 +1,20 @@
 import Link from "next/link";
 
-import { getJob } from "@/server/job-store";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+
+async function fetchJob(jobId: string) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/renders/${jobId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
 
 export default async function ProcessingPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  const job = getJob(jobId);
+  const job = await fetchJob(jobId);
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-16 text-zinc-100">
