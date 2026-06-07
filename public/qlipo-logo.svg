@@ -1,0 +1,76 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="arcGradient" x1="112" y1="112" x2="406" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF8AF1"/>
+      <stop offset="0.38" stop-color="#D27BFF"/>
+      <stop offset="0.72" stop-color="#8EB6FF"/>
+      <stop offset="1" stop-color="#3AE4FF"/>
+    </linearGradient>
+    <linearGradient id="arcGlowGradient" x1="140" y1="132" x2="396" y2="332" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD8FF"/>
+      <stop offset="0.4" stop-color="#E7C4FF"/>
+      <stop offset="1" stop-color="#91F1FF"/>
+    </linearGradient>
+    <linearGradient id="tailGradient" x1="212" y1="215" x2="360" y2="341" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D85BFF"/>
+      <stop offset="0.58" stop-color="#9E79FF"/>
+      <stop offset="1" stop-color="#34E1FF"/>
+    </linearGradient>
+    <linearGradient id="lineGradient" x1="56" y1="252" x2="454" y2="252" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A64DFF" stop-opacity="0"/>
+      <stop offset="0.2" stop-color="#D46BFF"/>
+      <stop offset="0.75" stop-color="#54CFFF"/>
+      <stop offset="1" stop-color="#54CFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="softGlow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 0.9 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+      <feBlend in="SourceGraphic" in2="blur" mode="screen"/>
+    </filter>
+    <filter id="sparkGlow" x="-40" y="-40" width="592" height="592" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feBlend in="SourceGraphic" in2="blur" mode="screen"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#softGlow)">
+    <path d="M115 255.5C115 176.419 179.419 112 258.5 112C314.03 112 362.186 144.037 386.124 190.612" stroke="url(#arcGradient)" stroke-width="43" stroke-linecap="round"/>
+    <path d="M390.443 209.497C398.329 228.237 402.685 248.823 402.685 270.427C402.685 348.79 339.141 412.333 260.778 412.333C194.154 412.333 138.262 366.392 122.991 304.397" stroke="url(#arcGradient)" stroke-width="43" stroke-linecap="round"/>
+    <path d="M114 256C114 175.867 179.557 111 259.5 111C332.443 111 393.366 164.977 406.49 234.233" stroke="#7C6EFF" stroke-width="5.5" stroke-linecap="round" opacity="0.85"/>
+    <path d="M126 300C145.979 370.785 211.011 422 288 422C313.729 422 337.952 416.283 359.647 406.074" stroke="#53CFFF" stroke-width="4.5" stroke-linecap="round" opacity="0.75"/>
+
+    <path d="M155 145L64 145" stroke="url(#lineGradient)" stroke-width="5" stroke-linecap="round" opacity="0.78"/>
+    <path d="M128 184L38 184" stroke="url(#lineGradient)" stroke-width="5" stroke-linecap="round" opacity="0.78"/>
+    <path d="M111 222L30 222" stroke="url(#lineGradient)" stroke-width="5" stroke-linecap="round" opacity="0.58"/>
+    <path d="M96 256L48 256" stroke="url(#lineGradient)" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+
+    <path d="M365 162L450 162" stroke="url(#lineGradient)" stroke-width="4.5" stroke-linecap="round" opacity="0.55"/>
+    <path d="M392 209L468 209" stroke="url(#lineGradient)" stroke-width="4.5" stroke-linecap="round" opacity="0.4"/>
+
+    <rect x="163" y="132" width="18" height="14" rx="3.5" transform="rotate(-18 163 132)" fill="#FFB6FA" opacity="0.95"/>
+    <rect x="196" y="124" width="17" height="14" rx="3.5" transform="rotate(-10 196 124)" fill="#E7B2FF" opacity="0.94"/>
+    <rect x="230" y="121" width="18" height="14" rx="3.5" transform="rotate(-2 230 121)" fill="#D9BEFF" opacity="0.92"/>
+    <rect x="140" y="164" width="16" height="12" rx="3" transform="rotate(-24 140 164)" fill="#100818" opacity="0.88"/>
+
+    <path d="M206 238.969C206 224.085 222.226 214.812 235.067 222.521L350.773 291.959C363.283 299.469 363.283 317.531 350.773 325.041L235.067 394.479C222.226 402.188 206 392.915 206 378.031V238.969Z" fill="url(#tailGradient)"/>
+    <path d="M206 238.969C206 224.085 222.226 214.812 235.067 222.521L350.773 291.959C363.283 299.469 363.283 317.531 350.773 325.041L235.067 394.479C222.226 402.188 206 392.915 206 378.031V238.969Z" stroke="url(#arcGlowGradient)" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M219 240C219 232.406 227.246 227.686 233.801 231.657L336.257 293.722C342.613 297.572 342.613 306.428 336.257 310.278L233.801 372.343C227.246 376.314 219 371.594 219 364V240Z" fill="url(#arcGlowGradient)" fill-opacity="0.25"/>
+
+    <path d="M205 222C196.812 230.188 192 241.5 192 253V308.5C192 322.307 198.883 335.205 210.344 342.891" stroke="#7E68FF" stroke-width="4.5" stroke-linecap="round" opacity="0.8"/>
+
+    <path d="M127 341C108.228 323.511 95.047 300.108 89.84 273.65" stroke="#8B78FF" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+    <path d="M95 286L61 286" stroke="#8B78FF" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+    <path d="M421 288L455 288" stroke="#64E2FF" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+
+    <rect x="403" y="173" width="10" height="10" rx="2.5" fill="#D39BFF"/>
+    <rect x="421" y="194" width="12" height="12" rx="2.5" fill="#C88FFF"/>
+    <rect x="438" y="208" width="8" height="8" rx="2" fill="#76D7FF"/>
+    <rect x="390" y="186" width="7" height="7" rx="2" fill="#F6B2FF"/>
+  </g>
+
+  <g filter="url(#sparkGlow)">
+    <path d="M410 415L417 440L442 447L417 454L410 479L403 454L378 447L403 440L410 415Z" fill="#6BE8FF" fill-opacity="0.9"/>
+    <path d="M410 425L414 440L429 444L414 448L410 463L406 448L391 444L406 440L410 425Z" fill="#E6F7FF" fill-opacity="0.95"/>
+    <path d="M448 124L451 135L462 138L451 141L448 152L445 141L434 138L445 135L448 124Z" fill="#B897FF" fill-opacity="0.8"/>
+  </g>
+</svg>
