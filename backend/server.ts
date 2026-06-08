@@ -10,8 +10,13 @@ import previewRouter from "./routes/preview";
 const app  = express();
 const PORT = process.env.PORT ?? 3001;
 
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000").split(",").map((o) => o.trim());
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN ?? "http://localhost:3000",
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS bloqueado para origem: ${origin}`));
+  },
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
