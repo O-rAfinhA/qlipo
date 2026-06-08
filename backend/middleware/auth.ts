@@ -8,7 +8,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
   try {
-    await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! });
+    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! });
+    res.locals.userId = payload.sub;
     next();
   } catch {
     res.status(401).json({ error: "Token invalido ou expirado." });

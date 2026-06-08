@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createWriteStream } from "fs";
@@ -36,6 +37,25 @@ export async function downloadToFile(key: string, localPath: string) {
   const res = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
   if (!res.Body) throw new Error(`R2 key not found: ${key}`);
   await pipeline(res.Body as Readable, createWriteStream(localPath));
+}
+
+export async function getUserStorageBytes(userId: string): Promise<number> {
+  let totalBytes = 0;
+  for (const prefix of [`uploads/${userId}/`, `renders/${userId}/`]) {
+    let continuationToken: string | undefined;
+    do {
+      const res = await r2.send(new ListObjectsV2Command({
+        Bucket: BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }));
+      for (const obj of res.Contents ?? []) {
+        totalBytes += obj.Size ?? 0;
+      }
+      continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (continuationToken);
+  }
+  return totalBytes;
 }
 
 export async function keyExists(key: string): Promise<boolean> {

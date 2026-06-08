@@ -8,6 +8,7 @@ const router = Router();
 
 router.post("/renders", requireAuth, (req, res) => {
   try {
+    const userId = res.locals.userId as string;
     const payload = req.body as RenderRequest;
     if (!payload?.media || !payload?.visuals || !payload?.audios) {
       res.status(400).json({ error: "Payload de render invalido." });
@@ -16,7 +17,7 @@ router.post("/renders", requireAuth, (req, res) => {
 
     const hasR2Files = payload.media.some((m) => m.r2Key);
     const job = hasR2Files
-      ? createFfmpegRenderJob(payload)
+      ? createFfmpegRenderJob(payload, userId)
       : createRenderJob(payload);
 
     res.json({ jobId: job.jobId, status: job.stage });

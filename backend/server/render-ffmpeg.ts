@@ -37,7 +37,7 @@ function kenBurnsFilter(mediaId: string, duration: number, w: number, h: number)
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
-export function createFfmpegRenderJob(input: RenderRequest): RenderJob {
+export function createFfmpegRenderJob(input: RenderRequest, userId = "anonymous"): RenderJob {
   const jobId = crypto.randomUUID();
   const summary = summarizeComposition(input.media, input.visuals, input.audios, input.mediaOrder, [], input.bpm ?? 0);
 
@@ -52,14 +52,14 @@ export function createFfmpegRenderJob(input: RenderRequest): RenderJob {
   };
 
   saveJob(baseJob);
-  void runJob(jobId, input, summary);
+  void runJob(jobId, input, summary, userId);
 
   return baseJob;
 }
 
 // ─── Job runner ─────────────────────────────────────────────────────────────
 
-async function runJob(jobId: string, input: RenderRequest, summary: CompositionSummary) {
+async function runJob(jobId: string, input: RenderRequest, summary: CompositionSummary, userId = "anonymous") {
   const workDir = join(tmpdir(), "qlipo-render", jobId);
   await mkdir(workDir, { recursive: true });
 
@@ -108,7 +108,7 @@ async function runJob(jobId: string, input: RenderRequest, summary: CompositionS
     update("muxando", 95, "Enviando video para armazenamento...");
 
     const ext = (input.outputOptions?.codec === "vp9") ? "webm" : "mp4";
-    const r2Key = `renders/${jobId}/output.${ext}`;
+    const r2Key = `renders/${userId}/${jobId}/output.${ext}`;
     const buffer = await readFile(outputPath);
     await uploadBuffer(r2Key, buffer, ext === "webm" ? "video/webm" : "video/mp4");
 
