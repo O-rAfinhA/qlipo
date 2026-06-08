@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createWriteStream } from "fs";
@@ -35,6 +36,15 @@ export async function downloadToFile(key: string, localPath: string) {
   const res = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
   if (!res.Body) throw new Error(`R2 key not found: ${key}`);
   await pipeline(res.Body as Readable, createWriteStream(localPath));
+}
+
+export async function keyExists(key: string): Promise<boolean> {
+  try {
+    await r2.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function downloadToBuffer(key: string): Promise<Buffer> {

@@ -3,7 +3,7 @@ import { mkdir, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
-import { downloadToFile, uploadBuffer, generateDownloadUrl } from "../server/r2-client";
+import { downloadToFile, uploadBuffer, generateDownloadUrl, keyExists } from "../server/r2-client";
 import { Ffmpeg } from "../server/ffmpeg-runtime";
 
 const router = Router();
@@ -18,13 +18,11 @@ router.get("/media/preview", async (req, res) => {
   try {
     const previewKey = `previews/${Buffer.from(r2Key).toString("base64url").slice(0, 32)}.mp4`;
 
-    // Try to serve existing preview from R2
-    try {
+    // Serve existing preview if already generated
+    if (await keyExists(previewKey)) {
       const downloadUrl = await generateDownloadUrl(previewKey, 3600);
       res.redirect(302, downloadUrl);
       return;
-    } catch {
-      // Preview not yet generated, continue
     }
 
     // Download original file to /tmp
