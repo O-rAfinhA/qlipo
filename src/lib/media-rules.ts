@@ -443,7 +443,8 @@ function buildSequentialAudioSegments(
       fadeOutSeconds: isLast  ? DEFAULT_FADE_SECONDS : DEFAULT_CROSSFADE_SECONDS,
       gainDb:         calcGainDb((audio as AudioTimelineItem).volume ?? 1),
     });
-    cursor = startAt + Math.max(0, dur - DEFAULT_CROSSFADE_SECONDS);
+    // Advance cursor to endAt so next crossfade is computed from the correct boundary
+    cursor = startAt + dur;
   }
   return result;
 }
@@ -501,7 +502,8 @@ export function summarizeComposition(
       .map((item, idx) => ({ ...item, order: idx }));
 
     let visualSegments: VisualSegment[];
-    let useSequentialAudio = true; // basic auto uses sequential; beat/events use syncAudioToVideo
+    let useSequentialAudio = true;          // basic auto uses sequential; beat/events use syncAudioToVideo
+    let precomputedAudio: AudioSegment[] | null = null; // set by basic mode to avoid double-computation
 
     if (musicalEvents.length > 0) {
       // ── Music-driven layout: each clip fills one musical section ────────────
@@ -639,9 +641,27 @@ export function summarizeComposition(
         if (finalVisual) visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
       } else {
         // ── Basic sequential mode (no beat sync, no events) ──────────────────
-        // Each clip plays once in order using its natural/configured duration.
-        // No randomization, no looping. One continuous visual track.
+        // Each clip plays once in order. Audio also plays sequentially (once).
+        // If audio is longer than video, video clips cycle (without Final)
+        // to fill the audio duration — Final is always appended last.
+        const { loopItems: loopVisuals, finalItem: finalVisual } = splitFinalItem(media, orderedVisuals);
+        const seqAudio = buildSequentialAudioSegments(media, sortedAudios);
+        const audioDur = seqAudio.length > 0 ? Math.max(...seqAudio.map((s) => s.endAt)) : 0;
+
         visualSegments = computeVisualSegments(media, orderedVisuals);
+        const videoEnd = visualSegments.length > 0 ? Math.max(...visualSegments.map((s) => s.endAt)) : 0;
+
+        if (audioDur > videoEnd) {
+          // Extend with loop clips (not Final) to fill audio duration
+          const pool = loopVisuals.length > 0 ? loopVisuals : orderedVisuals;
+          visualSegments = extendVisualsToFillDuration(media, pool, visualSegments, audioDur);
+          // Re-append Final after extension if it exists
+          if (finalVisual) {
+            visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
+          }
+        }
+
+        precomputedAudio = seqAudio;
       }
     }
 
@@ -697,9 +717,10 @@ export function summarizeComposition(
     );
 
     // Sequential audio for basic mode; beat/events modes loop to fill video duration
-    const audioSegments = useSequentialAudio
-      ? buildSequentialAudioSegments(media, sortedAudios)
-      : syncAudioToVideo(media, sortedAudios, totalVideoSeconds);
+    const audioSegments = precomputedAudio
+      ?? (useSequentialAudio
+        ? buildSequentialAudioSegments(media, sortedAudios)
+        : syncAudioToVideo(media, sortedAudios, totalVideoSeconds));
 
     const totalAudioSeconds = Number(
       (audioSegments.length ? Math.max(...audioSegments.map((s) => s.endAt)) : 0).toFixed(2),
