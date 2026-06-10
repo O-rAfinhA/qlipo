@@ -62,13 +62,10 @@ async function uploadFiles(files: File[], token: string): Promise<Record<string,
   );
 
   return Object.fromEntries(
-    urlData.map(({ filename, r2Key }) => {
-      const isVideo = files.find((f) => f.name === filename)?.type.startsWith("video/");
-      return [filename, {
-        r2Key,
-        previewUrl: isVideo ? `${BACKEND_URL}/api/media/preview?r2Key=${encodeURIComponent(r2Key)}` : undefined,
-      }];
-    }),
+    urlData.map(({ filename, r2Key }) => [
+      filename,
+      { r2Key, previewUrl: `${BACKEND_URL}/api/media/preview?r2Key=${encodeURIComponent(r2Key)}` },
+    ]),
   );
 }
 
@@ -228,10 +225,12 @@ export function VideoEditorApp() {
   // ── Auto-save (debounced 1 s, skips empty projects) ───────────────────────
   useAutoSave({ preset, editMode, mediaOrder, colorGradePresetId, media, visuals, audios, textOverlays, watermarks });
 
-  // On mount: mark session active; register clean-exit handler; detect crash
+  // On mount: restore last session automatically, then mark session active
   useEffect(() => {
-    // If flag was already set, the previous session crashed (beforeunload never ran)
-    if (didSessionCrash() && loadFromLocalStorage()) setShowRestoreBanner(true);
+    const saved = loadFromLocalStorage();
+    if (saved && saved.media.length > 0) {
+      loadProject(saved);
+    }
     markSessionStart();
     const onUnload = () => markSessionEnd();
     window.addEventListener("beforeunload", onUnload);

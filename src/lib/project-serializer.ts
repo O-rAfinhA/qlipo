@@ -15,8 +15,7 @@ export type ProjectSaveData = {
   editMode: "auto" | "manual";
   mediaOrder: "sequential" | "random";
   colorGradePresetId: string | null;
-  // previewUrl intentionally omitted — blob URLs are session-only
-  media: Omit<MediaItem, "previewUrl">[];
+  media: (Omit<MediaItem, "previewUrl"> & { previewUrl?: string })[];
   visuals: VisualTimelineItem[];
   audios: AudioTimelineItem[];
   textOverlays: TextOverlay[];
@@ -40,6 +39,8 @@ const schema = z.object({
     sizeBytes: z.number(),
     durationSeconds: z.number(),
     serverPath: z.string().optional(),
+    r2Key: z.string().optional(),
+    previewUrl: z.string().optional(),
     valid: z.boolean(),
     issues: z.array(z.string()),
   })),
@@ -114,8 +115,11 @@ export function serializeProject(state: {
     editMode: state.editMode,
     mediaOrder: state.mediaOrder,
     colorGradePresetId: state.colorGradePresetId,
-    // Strip previewUrl (blob URLs are session-only)
-    media: state.media.map(({ previewUrl: _p, ...rest }) => rest),
+    // Only persist real URLs (not blob: URLs which are session-only)
+    media: state.media.map(({ previewUrl, ...rest }) => ({
+      ...rest,
+      previewUrl: previewUrl?.startsWith("blob:") ? undefined : previewUrl,
+    })),
     visuals: state.visuals,
     audios: state.audios,
     textOverlays: state.textOverlays,

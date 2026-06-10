@@ -16,6 +16,15 @@ router.get("/media/preview", async (req, res) => {
   }
 
   try {
+    // Images: redirect to R2 directly, no FFmpeg needed
+    const imageExts = ["jpg", "jpeg", "png", "webp", "gif", "avif"];
+    const fileExt = r2Key.split(".").pop()?.toLowerCase() ?? "";
+    if (imageExts.includes(fileExt)) {
+      const downloadUrl = await generateDownloadUrl(r2Key, 3600);
+      res.redirect(302, downloadUrl);
+      return;
+    }
+
     const previewKey = `previews/${Buffer.from(r2Key).toString("base64url").slice(0, 32)}.mp4`;
 
     // Serve existing preview if already generated
