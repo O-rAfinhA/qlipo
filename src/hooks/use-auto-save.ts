@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from "react";
-import { saveToLocalStorage, serializeProject } from "@/lib/project-serializer";
+import { clearLocalStorage, saveToLocalStorage, serializeProject } from "@/lib/project-serializer";
 import type { AudioTimelineItem, ExportPreset, MediaItem, TextOverlay, VisualTimelineItem, Watermark } from "@/lib/types";
 
 type AutoSaveState = {
@@ -16,14 +16,17 @@ type AutoSaveState = {
   watermarks: Watermark[];
 };
 
-export function useAutoSave(state: AutoSaveState, debounceMs = 1000) {
+export function useAutoSave(state: AutoSaveState, debounceMs = 300) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Don't save empty projects
-    if (state.media.length === 0) return;
-
     if (timerRef.current) clearTimeout(timerRef.current);
+
+    if (state.media.length === 0) {
+      clearLocalStorage();
+      return;
+    }
+
     timerRef.current = setTimeout(() => {
       const data = serializeProject(state);
       saveToLocalStorage(data);
