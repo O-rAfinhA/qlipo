@@ -29,6 +29,7 @@ import type { AutoEnhancements } from "@/lib/media-rules";
 type UploadableFile = File & {
   durationSeconds?: number;
   serverPath?: string;
+  r2Key?: string;
   previewUrl?: string;
 };
 
@@ -222,6 +223,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         durationSeconds,
         previewUrl: file.previewUrl ?? URL.createObjectURL(file),
         serverPath: file.serverPath,
+        r2Key: file.r2Key,
         valid: validationEntry?.valid ?? fallbackValidation.valid,
         issues: validationEntry?.issues ?? fallbackValidation.issues,
       } satisfies MediaItem;

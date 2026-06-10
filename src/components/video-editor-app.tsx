@@ -319,7 +319,8 @@ export function VideoEditorApp() {
       setErrorMessage(
         validation.files.some((e) => !e.valid) ? "Alguns arquivos foram rejeitados." : undefined,
       );
-    } catch {
+    } catch (err) {
+      console.error("[upload]", err);
       setErrorMessage("Erro ao enviar os arquivos. Tente novamente.");
     } finally {
       setUploading(false);
@@ -433,44 +434,56 @@ export function VideoEditorApp() {
 
   async function handleRender() {
     setProcessingState({ processing: true, progress: 5, progressMessage: "Criando job de renderizacao", downloadUrl: undefined });
-    const token = await getToken() ?? "";
-    const response = await fetch(`${BACKEND_URL}/api/renders`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        preset, media, visuals, audios, mediaOrder,
-        bpm: bpm > 0 ? bpm : undefined,
-        textOverlays: textOverlays.length > 0 ? textOverlays : undefined,
-        outputOptions,
-      }),
-    });
-    const payload = (await response.json()) as { jobId: string };
-    setProcessingState({ activeJobId: payload.jobId });
-
-    sourceRef.current?.close();
-    const source = new EventSource(`${BACKEND_URL}/api/renders/${payload.jobId}/stream`);
-    sourceRef.current = source;
-
-    source.onmessage = (event) => {
-      const job = JSON.parse(event.data) as RenderJob;
-      setProcessingState({
-        processing: job.stage !== "finalizado" && job.stage !== "erro",
-        progress: job.progress,
-        progressMessage: job.message,
-        downloadUrl: job.downloadUrl,
-        activeJobId: job.jobId,
-        simulationMode: job.mode === "simulation",
+    try {
+      const token = await getToken() ?? "";
+      const response = await fetch(`${BACKEND_URL}/api/renders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          preset, media, visuals, audios, mediaOrder,
+          bpm: bpm > 0 ? bpm : undefined,
+          textOverlays: textOverlays.length > 0 ? textOverlays : undefined,
+          outputOptions,
+        }),
       });
-      if (job.stage === "finalizado" || job.stage === "erro") {
+      const payload = await response.json() as { jobId?: string; error?: string };
+      if (!response.ok || !payload.jobId) {
+        const msg = payload.error ?? `Erro HTTP ${response.status}`;
+        console.error("[render] POST falhou:", msg);
+        setProcessingState({ processing: false, progress: 0, progressMessage: `Erro: ${msg}` });
+        return;
+      }
+      setProcessingState({ activeJobId: payload.jobId });
+
+      sourceRef.current?.close();
+      const source = new EventSource(`${BACKEND_URL}/api/renders/${payload.jobId}/stream`);
+      sourceRef.current = source;
+
+      source.onmessage = (event) => {
+        const job = JSON.parse(event.data) as RenderJob;
+        setProcessingState({
+          processing: job.stage !== "finalizado" && job.stage !== "erro",
+          progress: job.progress,
+          progressMessage: job.message,
+          downloadUrl: job.downloadUrl,
+          activeJobId: job.jobId,
+          simulationMode: job.mode === "simulation",
+        });
+        if (job.stage === "finalizado" || job.stage === "erro") {
+          source.close();
+          sourceRef.current = null;
+        }
+      };
+      source.onerror = (e) => {
+        console.error("[render] SSE erro:", e);
         source.close();
         sourceRef.current = null;
-      }
-    };
-    source.onerror = () => {
-      source.close();
-      sourceRef.current = null;
-      setProcessingState({ processing: false, progressMessage: "Erro na conexao com o servidor." });
-    };
+        setProcessingState({ processing: false, progressMessage: "Erro na conexao com o servidor." });
+      };
+    } catch (err) {
+      console.error("[render] Excecao:", err);
+      setProcessingState({ processing: false, progress: 0, progressMessage: `Erro: ${err instanceof Error ? err.message : "Falha ao conectar com o backend"}` });
+    }
   }
 
   // ── Drag-to-reorder (auto mode) ────────────────────────────────────────────
@@ -1243,7 +1256,7 @@ export function VideoEditorApp() {
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <p className="text-[10px] leading-relaxed text-zinc-700">{progressMessage}</p>
+              <p className={clsx("text-[10px] leading-relaxed", progressMessage?.startsWith("Erro") ? "text-red-400" : "text-zinc-700")}>{progressMessage}</p>
             </div>
 
             {downloadUrl && (

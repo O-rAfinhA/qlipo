@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 const isPublicRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)'])
 
 export const proxy = clerkMiddleware(async (auth, request) => {
+  if (process.env.NODE_ENV === 'development') return NextResponse.next()
   if (isPublicRoute(request)) return NextResponse.next()
 
   const { userId } = await auth()
