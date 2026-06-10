@@ -648,17 +648,17 @@ export function summarizeComposition(
         const seqAudio = buildSequentialAudioSegments(media, sortedAudios);
         const audioDur = seqAudio.length > 0 ? Math.max(...seqAudio.map((s) => s.endAt)) : 0;
 
-        visualSegments = computeVisualSegments(media, orderedVisuals);
+        visualSegments = computeVisualSegments(media, loopVisuals);
         const videoEnd = visualSegments.length > 0 ? Math.max(...visualSegments.map((s) => s.endAt)) : 0;
 
         if (audioDur > videoEnd) {
-          // Extend with loop clips (not Final) to fill audio duration
-          const pool = loopVisuals.length > 0 ? loopVisuals : orderedVisuals;
-          visualSegments = extendVisualsToFillDuration(media, pool, visualSegments, audioDur);
-          // Re-append Final after extension if it exists
-          if (finalVisual) {
-            visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
-          }
+          // Extend with loop clips to fill audio duration
+          visualSegments = extendVisualsToFillDuration(media, loopVisuals, visualSegments, audioDur);
+        }
+
+        // Always append Final at the end if it exists
+        if (finalVisual) {
+          visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
         }
 
         precomputedAudio = seqAudio;
