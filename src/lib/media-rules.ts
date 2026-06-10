@@ -169,6 +169,39 @@ function audioDurationFor(media: MediaItem[], mediaId: string) {
   return media.find((entry) => entry.id === mediaId)?.durationSeconds ?? 0;
 }
 
+/**
+ * Re-orders audio tracks so that the track named "Intro" (case-insensitive,
+ * no extension) is always first and the track named "Final" is always last.
+ * All other tracks keep their relative order between those two anchors.
+ * Works in both auto and manual mode — in manual mode the startAt times are
+ * preserved, only the array order (and order field) changes.
+ */
+export function applyIntroFinalOrder(
+  media: MediaItem[],
+  audios: AudioTimelineItem[],
+): AudioTimelineItem[] {
+  if (audios.length <= 1) return audios;
+
+  const baseName = (mediaId: string) =>
+    (media.find((m) => m.id === mediaId)?.name ?? "")
+      .replace(/\.[^.]+$/, "")
+      .toLowerCase()
+      .trim();
+
+  const intro  = audios.find((a) => baseName(a.mediaId) === "intro");
+  const final_ = audios.find((a) => baseName(a.mediaId) === "final");
+  const rest   = audios.filter((a) => a !== intro && a !== final_);
+
+  const ordered = [
+    ...(intro  ? [intro]  : []),
+    ...rest,
+    ...(final_ ? [final_] : []),
+  ];
+
+  // Re-index so syncAudioToVideo's sort-by-order reflects the new sequence
+  return ordered.map((a, i) => ({ ...a, order: i }));
+}
+
 function calcGainDb(volumeFactor: number): number {
   return TARGET_GAIN_DB + 20 * Math.log10(Math.max(0.001, volumeFactor));
 }
@@ -351,6 +384,7 @@ export function summarizeComposition(
   enhancements: AutoEnhancements = {},
 ): CompositionSummary {
   const hasManualAudio = audios.some((a) => a.startAt !== undefined);
+  const sortedAudios   = applyIntroFinalOrder(media, audios);
 
   // ── Auto mode: randomised timing + optional music-driven sync ─────────────
   if (!hasManualAudio && visuals.some((v) => v.startAt === undefined)) {
@@ -361,7 +395,7 @@ export function summarizeComposition(
         : [...visuals].sort((a, b) => a.order - b.order)
     ).map((item, idx) => ({ ...item, order: idx }));
 
-    const audioNatural = naturalAudioDuration(media, audios);
+    const audioNatural = naturalAudioDuration(media, sortedAudios);
     let visualSegments: VisualSegment[];
 
     if (musicalEvents.length > 0) {
@@ -579,7 +613,7 @@ export function summarizeComposition(
       (visualSegments.length ? Math.max(...visualSegments.map((s) => s.endAt)) : 0).toFixed(2),
     );
 
-    const audioSegments = syncAudioToVideo(media, audios, totalVideoSeconds);
+    const audioSegments = syncAudioToVideo(media, sortedAudios, totalVideoSeconds);
     const totalAudioSeconds = Number(
       (audioSegments.length ? Math.max(...audioSegments.map((s) => s.endAt)) : 0).toFixed(2),
     );
@@ -595,15 +629,15 @@ export function summarizeComposition(
     };
   }
 
-  // ── Manual / mixed mode (unchanged) ───────────────────────────────────────
+  // ── Manual / mixed mode ────────────────────────────────────────────────────
   const visualSegments = computeVisualSegments(media, visuals);
   const totalVideoSeconds = Number(
     (visualSegments.length ? Math.max(...visualSegments.map((s) => s.endAt)) : 0).toFixed(2),
   );
 
   const audioSegments = hasManualAudio
-    ? buildManualAudioSegments(media, audios)
-    : syncAudioToVideo(media, audios, totalVideoSeconds);
+    ? buildManualAudioSegments(media, sortedAudios)
+    : syncAudioToVideo(media, sortedAudios, totalVideoSeconds);
 
   const totalAudioSeconds = Number(
     (audioSegments.length ? Math.max(...audioSegments.map((s) => s.endAt)) : 0).toFixed(2),
