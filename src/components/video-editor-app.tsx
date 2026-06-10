@@ -947,101 +947,115 @@ export function VideoEditorApp() {
 
             <div className="flex-1 overflow-y-auto">
 
-              {/* Visual tracks */}
+              {/* ── Faixa de Vídeo única (auto mode) ── */}
               <div className="p-4">
-                <DndContext sensors={sensors} collisionDetection={closestCenter}
-                  onDragEnd={(e) => onDragEnd(e, "visual")}>
-                  <SortableContext items={visuals.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                    {visuals.length === 0 ? (
-                      <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-white/[0.06]">
-                        <p className="text-[11px] text-zinc-800">Adicione imagens ou vídeos</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {visuals.map((item) => {
-                          const mediaItem = media.find((m) => m.id === item.mediaId);
-                          if (!mediaItem) return null;
-                          return (
-                            <SortableTrack
-                              key={item.id}
-                              id={item.id}
-                              title={mediaItem.name}
-                              subtitle={`${secondsLabel(item.durationSeconds)} · fade ${item.fadeInSeconds}s / ${item.fadeOutSeconds}s`}
-                              accent="coral"
-                              badge={mediaItem.kind}
-                              preview={<MediaThumbnail item={mediaItem} className="h-10 w-10" />}
-                              onRemove={() => removeMedia(item.mediaId)}
-                              controls={
-                                <div className="flex items-center gap-2">
-                                  <label className="flex items-center gap-1 text-[10px] text-zinc-700">
-                                    Dur
-                                    <input className={`${inputCls} w-14`} type="number" min="1" step="0.5"
-                                      value={item.durationSeconds}
-                                      onChange={(e) => updateVisualDuration(item.id, Number(e.target.value || 1))} />
-                                  </label>
-                                  <label className="flex items-center gap-1 text-[10px] text-zinc-700">
-                                    In
-                                    <input className={`${inputCls} w-12`} type="number" min="0" step="0.5"
-                                      value={item.fadeInSeconds}
-                                      onChange={(e) => updateVisualFade(item.id, "fadeInSeconds", Number(e.target.value || 0))} />
-                                  </label>
-                                  <label className="flex items-center gap-1 text-[10px] text-zinc-700">
-                                    Out
-                                    <input className={`${inputCls} w-12`} type="number" min="0" step="0.5"
-                                      value={item.fadeOutSeconds}
-                                      onChange={(e) => updateVisualFade(item.id, "fadeOutSeconds", Number(e.target.value || 0))} />
-                                  </label>
-                                </div>
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                  </SortableContext>
-                </DndContext>
+                {visuals.length === 0 ? (
+                  <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-white/[0.06]">
+                    <p className="text-[11px] text-zinc-800">Adicione imagens ou vídeos</p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-white/[0.08] bg-white/[0.02]">
+                    {/* Track header */}
+                    <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2">
+                      <Film className="h-3 w-3 text-orange-400/60" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Faixa de Vídeo</span>
+                      <span className="ml-auto text-[10px] text-zinc-700">
+                        {visuals.length} {visuals.length === 1 ? "clipe" : "clipes"} · {secondsLabel(summary.totalVideoSeconds)}
+                      </span>
+                    </div>
+                    {/* Clip list — reorderable */}
+                    <DndContext sensors={sensors} collisionDetection={closestCenter}
+                      onDragEnd={(e) => onDragEnd(e, "visual")}>
+                      <SortableContext items={visuals.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                        <div className="divide-y divide-white/[0.04]">
+                          {visuals.map((item) => {
+                            const mediaItem = media.find((m) => m.id === item.mediaId);
+                            if (!mediaItem) return null;
+                            return (
+                              <SortableTrack
+                                key={item.id}
+                                id={item.id}
+                                title={mediaItem.name}
+                                subtitle={`${secondsLabel(item.durationSeconds)} · fade ${item.fadeInSeconds}s / ${item.fadeOutSeconds}s`}
+                                accent="coral"
+                                badge={mediaItem.kind}
+                                preview={<MediaThumbnail item={mediaItem} className="h-10 w-10" />}
+                                onRemove={() => removeMedia(item.mediaId)}
+                                controls={
+                                  <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-1 text-[10px] text-zinc-700">
+                                      Dur
+                                      <input className={`${inputCls} w-14`} type="number" min="1" step="0.5"
+                                        value={item.durationSeconds}
+                                        onChange={(e) => updateVisualDuration(item.id, Number(e.target.value || 1))} />
+                                    </label>
+                                    <label className="flex items-center gap-1 text-[10px] text-zinc-700">
+                                      In
+                                      <input className={`${inputCls} w-12`} type="number" min="0" step="0.5"
+                                        value={item.fadeInSeconds}
+                                        onChange={(e) => updateVisualFade(item.id, "fadeInSeconds", Number(e.target.value || 0))} />
+                                    </label>
+                                    <label className="flex items-center gap-1 text-[10px] text-zinc-700">
+                                      Out
+                                      <input className={`${inputCls} w-12`} type="number" min="0" step="0.5"
+                                        value={item.fadeOutSeconds}
+                                        onChange={(e) => updateVisualFade(item.id, "fadeOutSeconds", Number(e.target.value || 0))} />
+                                    </label>
+                                  </div>
+                                }
+                              />
+                            );
+                          })}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  </div>
+                )}
               </div>
 
-              {/* Audio header */}
-              <div className="flex shrink-0 items-center gap-2.5 border-y border-white/[0.06] px-5 py-3">
-                <Music4 className="h-3.5 w-3.5 text-cyan-400/60" />
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Áudio</span>
-                <span className="ml-2 text-[10px] text-zinc-800">
-                  {summary.audioSegments.length} seg · {secondsLabel(summary.totalAudioSeconds)}
-                </span>
-              </div>
-
-              {/* Audio tracks */}
+              {/* ── Faixa de Áudio única (auto mode) ── */}
+              <div className="border-t border-white/[0.06]" />
               <div className="p-4">
-                <DndContext sensors={sensors} collisionDetection={closestCenter}
-                  onDragEnd={(e) => onDragEnd(e, "audio")}>
-                  <SortableContext items={audios.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                    {audios.length === 0 ? (
-                      <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-white/[0.06]">
-                        <p className="text-[11px] text-zinc-800">Sem trilhas de áudio</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {audios.map((item) => {
-                          const mediaItem = media.find((m) => m.id === item.mediaId);
-                          if (!mediaItem) return null;
-                          return (
-                            <SortableTrack
-                              key={item.id}
-                              id={item.id}
-                              title={mediaItem.name}
-                              subtitle={`${secondsLabel(mediaItem.durationSeconds)} · alvo ${summary.normalizedTargetDb} dB · pico ${summary.peakLimitDb} dB`}
-                              accent="cyan"
-                              badge="audio"
-                              preview={<MediaThumbnail item={mediaItem} className="h-10 w-10" />}
-                              onRemove={() => removeMedia(item.mediaId)}
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                  </SortableContext>
-                </DndContext>
+                {audios.length === 0 ? (
+                  <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-white/[0.06]">
+                    <p className="text-[11px] text-zinc-800">Sem trilhas de áudio</p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-white/[0.08] bg-white/[0.02]">
+                    {/* Track header */}
+                    <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2">
+                      <Music4 className="h-3 w-3 text-cyan-400/60" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Faixa de Áudio</span>
+                      <span className="ml-auto text-[10px] text-zinc-700">
+                        {audios.length} {audios.length === 1 ? "arquivo" : "arquivos"} · {secondsLabel(summary.totalAudioSeconds)}
+                      </span>
+                    </div>
+                    {/* Audio list — reorderable */}
+                    <DndContext sensors={sensors} collisionDetection={closestCenter}
+                      onDragEnd={(e) => onDragEnd(e, "audio")}>
+                      <SortableContext items={audios.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                        <div className="divide-y divide-white/[0.04]">
+                          {audios.map((item) => {
+                            const mediaItem = media.find((m) => m.id === item.mediaId);
+                            if (!mediaItem) return null;
+                            return (
+                              <SortableTrack
+                                key={item.id}
+                                id={item.id}
+                                title={mediaItem.name}
+                                subtitle={`${secondsLabel(mediaItem.durationSeconds)} · alvo ${summary.normalizedTargetDb} dB · pico ${summary.peakLimitDb} dB`}
+                                accent="cyan"
+                                badge="audio"
+                                preview={<MediaThumbnail item={mediaItem} className="h-10 w-10" />}
+                                onRemove={() => removeMedia(item.mediaId)}
+                              />
+                            );
+                          })}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  </div>
+                )}
               </div>
             </div>
             </div>
