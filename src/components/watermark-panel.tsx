@@ -17,20 +17,21 @@ interface WatermarkPanelProps {
 export function WatermarkPanel({
   watermarks, media, totalDuration, onAdd, onUpdate, onRemove,
 }: WatermarkPanelProps) {
-  const [showForm,     setShowForm]     = useState(false);
-  const [uploadError,  setUploadError]  = useState('');
-  const [uploading,    setUploading]    = useState(false);
-  const [formData,     setFormData]     = useState<Partial<Watermark>>({
-    size: 20, opacity: 80, x: 75, y: 75, fadeInDuration: 0.5, fadeOutDuration: 0.5,
-  });
+  const [showForm,    setShowForm]    = useState(false);
+  const [uploading,   setUploading]   = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  // ID of the watermark being configured right now (already added to store)
+  const [draftId,     setDraftId]     = useState<string | null>(null);
+
+  const draft = draftId ? watermarks.find((w) => w.id === draftId) : null;
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadError('');
     setUploading(true);
+
     try {
-      // Get presigned URL from backend
       const urlRes = await fetch(`${BACKEND_URL}/api/uploads/watermark-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,156 +44,164 @@ export function WatermarkPanel({
       }
       const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string };
 
-      // Upload directly to R2
       const putRes = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-      if (!putRes.ok) { setUploadError('Erro ao enviar imagem para o armazenamento.'); return; }
+      if (!putRes.ok) { setUploadError('Erro ao enviar imagem.'); return; }
 
-      setFormData((prev) => ({
-        ...prev,
-        mediaId: r2Key,
-        imageUrl: `${BACKEND_URL}/api/media/preview?r2Key=${encodeURIComponent(r2Key)}`,
-      }));
+      // Add immediately to store so it appears in the preview right away
+      const startAt = 3;
+      const endAt   = Math.max(startAt + 1, totalDuration - 5);
+      const newWm: Watermark = {
+        id:              crypto.randomUUID(),
+        mediaId:         r2Key,
+        imageUrl:        `${BACKEND_URL}/api/media/preview?r2Key=${encodeURIComponent(r2Key)}`,
+        size:            20,
+        opacity:         80,
+        x:               75,
+        y:               75,
+        startAt,
+        endAt,
+        fadeInDuration:  0.5,
+        fadeOutDuration: 0.5,
+      };
+      onAdd(newWm);
+      setDraftId(newWm.id);
     } catch {
-      setUploadError('Erro ao fazer upload da marca d\'água.');
+      setUploadError("Erro ao fazer upload da marca d'água.");
     } finally {
       setUploading(false);
     }
   };
 
-  const handleAdd = () => {
-    if (!formData.mediaId || formData.size == null || formData.opacity == null) {
-      setUploadError('Selecione uma imagem primeiro.');
-      return;
-    }
-    const startAt = 3;
-    const endAt   = Math.max(startAt + 1, totalDuration - 5);
-    onAdd({
-      id:              crypto.randomUUID(),
-      mediaId:         formData.mediaId!,
-      imageUrl:        formData.imageUrl,
-      size:            formData.size!,
-      opacity:         formData.opacity!,
-      x:               formData.x ?? 75,
-      y:               formData.y ?? 75,
-      startAt,
-      endAt,
-      fadeInDuration:  formData.fadeInDuration ?? 0.5,
-      fadeOutDuration: formData.fadeOutDuration ?? 0.5,
-    });
-    setShowForm(false);
-    setFormData({ size: 20, opacity: 80, x: 75, y: 75, fadeInDuration: 0.5, fadeOutDuration: 0.5 });
+  const handleOpenForm = () => {
+    setDraftId(null);
     setUploadError('');
+    setShowForm(true);
+  };
+
+  const handleClose = () => {
+    setShowForm(false);
+    setDraftId(null);
+    setUploadError('');
+  };
+
+  const handleCancelDraft = () => {
+    if (draftId) onRemove(draftId);
+    handleClose();
   };
 
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg border border-slate-700">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Marca D'Água</h3>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition"
-        >
-          {showForm ? 'Cancelar' : 'Adicionar'}
-        </button>
+        {!showForm && (
+          <button onClick={handleOpenForm}
+            className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition">
+            Adicionar
+          </button>
+        )}
       </div>
 
+      {/* Add form */}
       {showForm && (
         <div className="space-y-3 p-3 bg-slate-800 rounded border border-slate-600">
-          {/* File Upload */}
-          <div>
-            <label className="text-xs text-gray-300 block mb-1">Imagem (JPG, PNG, WEBP — Max 5 MB)</label>
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp"
-              onChange={handleFileSelect}
-              disabled={uploading}
-              className="w-full text-xs bg-slate-700 text-white rounded px-2 py-1 border border-slate-600 disabled:opacity-50"
-            />
-            {uploadError && <p className="text-xs text-red-400 mt-1">{uploadError}</p>}
-            {uploading   && <p className="text-xs text-zinc-400 mt-1">Enviando...</p>}
-            {formData.imageUrl && !uploading && (
-              <div className="mt-2 flex items-center gap-2">
-                <img src={formData.imageUrl} alt="preview" className="h-8 rounded border border-slate-600 object-contain bg-slate-700" />
-                <span className="text-xs text-green-400">Imagem carregada</span>
+          {!draft ? (
+            /* Step 1: pick file */
+            <>
+              <label className="text-xs text-gray-300 block mb-1">Imagem (JPG, PNG, WEBP — Max 5 MB)</label>
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp"
+                onChange={handleFileSelect}
+                disabled={uploading}
+                className="w-full text-xs bg-slate-700 text-white rounded px-2 py-1 border border-slate-600 disabled:opacity-50"
+              />
+              {uploading    && <p className="text-xs text-zinc-400">Enviando...</p>}
+              {uploadError  && <p className="text-xs text-red-400">{uploadError}</p>}
+              <button onClick={handleClose}
+                className="w-full px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-gray-300 rounded transition">
+                Cancelar
+              </button>
+            </>
+          ) : (
+            /* Step 2: adjust parameters — watermark already visible in preview */
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <img src={draft.imageUrl} alt="wm" className="h-8 w-auto rounded border border-slate-600 object-contain bg-slate-700 shrink-0" />
+                <p className="text-[10px] text-green-400">Visível no preview — arraste para posicionar</p>
               </div>
-            )}
-          </div>
 
-          {/* Size */}
-          <div>
-            <label className="text-xs text-gray-300 flex justify-between"><span>Tamanho</span><span>{formData.size}%</span></label>
-            <input type="range" min="5" max="50" step="1" value={formData.size ?? 20}
-              onChange={(e) => setFormData({ ...formData, size: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
-          </div>
+              <Slider label="Tamanho" value={draft.size}    unit="%" min={5}   max={50}  step={1}
+                onChange={(v) => onUpdate(draft.id, { size: v })} />
+              <Slider label="Opacidade" value={draft.opacity} unit="%" min={10}  max={100} step={1}
+                onChange={(v) => onUpdate(draft.id, { opacity: v })} />
+              <Slider label="Fade In"  value={draft.fadeInDuration}  unit="s" min={0.5} max={3} step={0.1}
+                onChange={(v) => onUpdate(draft.id, { fadeInDuration: v })} />
+              <Slider label="Fade Out" value={draft.fadeOutDuration} unit="s" min={0.5} max={3} step={0.1}
+                onChange={(v) => onUpdate(draft.id, { fadeOutDuration: v })} />
 
-          {/* Opacity */}
-          <div>
-            <label className="text-xs text-gray-300 flex justify-between"><span>Opacidade</span><span>{formData.opacity}%</span></label>
-            <input type="range" min="10" max="100" step="1" value={formData.opacity ?? 80}
-              onChange={(e) => setFormData({ ...formData, opacity: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
-          </div>
-
-          {/* Fade In */}
-          <div>
-            <label className="text-xs text-gray-300 flex justify-between"><span>Fade In (s)</span><span>{formData.fadeInDuration?.toFixed(1)}</span></label>
-            <input type="range" min="0.5" max="3" step="0.1" value={formData.fadeInDuration ?? 0.5}
-              onChange={(e) => setFormData({ ...formData, fadeInDuration: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
-          </div>
-
-          {/* Fade Out */}
-          <div>
-            <label className="text-xs text-gray-300 flex justify-between"><span>Fade Out (s)</span><span>{formData.fadeOutDuration?.toFixed(1)}</span></label>
-            <input type="range" min="0.5" max="3" step="0.1" value={formData.fadeOutDuration ?? 0.5}
-              onChange={(e) => setFormData({ ...formData, fadeOutDuration: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
-          </div>
-
-          <p className="text-[10px] text-zinc-500">Após adicionar, arraste a marca d'água diretamente no preview para posicioná-la.</p>
-
-          <button onClick={handleAdd} disabled={!formData.mediaId || uploading}
-            className="w-full px-3 py-2 text-xs bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded transition font-medium">
-            Adicionar Marca D'Água
-          </button>
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleCancelDraft}
+                  className="flex-1 px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-gray-300 rounded transition">
+                  Remover
+                </button>
+                <button onClick={handleClose}
+                  className="flex-1 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition font-medium">
+                  Concluído
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* List */}
-      {watermarks.map((wm) => (
-        <div key={wm.id} className="p-3 bg-slate-800 rounded border border-slate-600 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            {wm.imageUrl && (
-              <img src={wm.imageUrl} alt="wm" className="h-7 w-auto rounded border border-slate-600 object-contain bg-slate-700 shrink-0" />
-            )}
-            <p className="text-[10px] text-gray-400 flex-1">{wm.startAt.toFixed(1)}s – {wm.endAt.toFixed(1)}s</p>
-            <button onClick={() => onRemove(wm.id)}
-              className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded shrink-0">✕</button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-gray-400 flex justify-between"><span>Tamanho</span><span>{wm.size}%</span></label>
-              <input type="range" min="5" max="50" step="1" value={wm.size}
-                onChange={(e) => onUpdate(wm.id, { size: Number(e.target.value) })}
-                className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
+      {/* Watermark list */}
+      {watermarks.map((wm) => {
+        if (wm.id === draftId) return null; // already shown in form
+        return (
+          <div key={wm.id} className="p-3 bg-slate-800 rounded border border-slate-600 space-y-2">
+            <div className="flex items-center gap-2">
+              {wm.imageUrl && (
+                <img src={wm.imageUrl} alt="wm" className="h-7 w-auto rounded border border-slate-600 object-contain bg-slate-700 shrink-0" />
+              )}
+              <p className="text-[10px] text-gray-400 flex-1">{wm.startAt.toFixed(1)}s – {wm.endAt.toFixed(1)}s</p>
+              <button onClick={() => onRemove(wm.id)}
+                className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded shrink-0">✕</button>
             </div>
-            <div>
-              <label className="text-[10px] text-gray-400 flex justify-between"><span>Opacidade</span><span>{wm.opacity}%</span></label>
-              <input type="range" min="10" max="100" step="1" value={wm.opacity}
-                onChange={(e) => onUpdate(wm.id, { opacity: Number(e.target.value) })}
-                className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
-            </div>
-          </div>
 
-          <p className="text-[10px] text-zinc-600">Posição: {wm.x.toFixed(0)}% × {wm.y.toFixed(0)}% — arraste no preview para reposicionar</p>
-        </div>
-      ))}
+            <div className="grid grid-cols-2 gap-2">
+              <Slider label="Tamanho"  value={wm.size}    unit="%" min={5}  max={50}  step={1}
+                onChange={(v) => onUpdate(wm.id, { size: v })} />
+              <Slider label="Opacidade" value={wm.opacity} unit="%" min={10} max={100} step={1}
+                onChange={(v) => onUpdate(wm.id, { opacity: v })} />
+            </div>
+
+            <p className="text-[10px] text-zinc-600">
+              {wm.x.toFixed(0)}% × {wm.y.toFixed(0)}% — arraste no preview para reposicionar
+            </p>
+          </div>
+        );
+      })}
 
       {watermarks.length === 0 && !showForm && (
         <p className="text-xs text-gray-500 text-center py-2">Nenhuma marca d'água adicionada</p>
       )}
+    </div>
+  );
+}
+
+function Slider({ label, value, unit, min, max, step, onChange }: {
+  label: string; value: number; unit: string;
+  min: number; max: number; step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <label className="text-[10px] text-gray-400 flex justify-between">
+        <span>{label}</span><span>{typeof value === 'number' ? (step < 1 ? value.toFixed(1) : value) : '—'}{unit}</span>
+      </label>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
     </div>
   );
 }
