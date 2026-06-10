@@ -6,7 +6,7 @@ import { tmpdir } from "os";
 
 import { exportPresets, summarizeComposition } from "../lib/media-rules";
 import { AUDIO_BITRATE, CODEC_CRF, DEFAULT_OUTPUT_OPTIONS } from "../lib/types";
-import type { CompositionSummary, ExportPreset, MediaItem, OutputOptions, RenderJob, RenderRequest, VisualSegment, Watermark, WatermarkPosition } from "../lib/types";
+import type { CompositionSummary, ExportPreset, MediaItem, OutputOptions, RenderJob, RenderRequest, VisualSegment, Watermark } from "../lib/types";
 import { getJob, saveJob, saveJobOutputKey } from "./job-store";
 import { downloadToFile, uploadBuffer, generateDownloadUrl } from "./r2-client";
 
@@ -332,14 +332,8 @@ async function renderVideo(
 
         command.input(wmPath).inputOptions(["-loop", "1", "-t", String(summary.totalVideoSeconds + 1)]);
 
-        const positionMap: Record<WatermarkPosition, { x: number; y: number }> = {
-          "top-left":     { x: 0, y: 0 },
-          "top-right":    { x: width - wmWidth, y: 0 },
-          "bottom-left":  { x: 0, y: height - Math.round((height * wmWidthPercent) / 100) },
-          "bottom-right": { x: width - wmWidth, y: height - Math.round((height * wmWidthPercent) / 100) },
-          "center":       { x: (width - wmWidth) / 2, y: (height - Math.round((height * wmWidthPercent) / 100)) / 2 },
-        };
-        const { x, y } = positionMap[wm.position];
+        const x = Math.round((width * wm.x) / 100);
+        const y = Math.round((height * wm.y) / 100);
 
         filters.push(`[${wmFileIdx}:v]scale=${wmWidth}:-1,format=rgba[wm${wmIdx}]`);
 

@@ -201,20 +201,19 @@ export type TextOverlay = {
   animation: TextAnimationType;
 };
 
-export type WatermarkPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
-
 export type Watermark = {
   id: string;
   mediaId: string;
   imageUrl?: string;
   imageData?: string;
-  size: number;              // 5-50, percentage of video width
-  opacity: number;           // 10-100, percentage
-  position: WatermarkPosition;
-  startAt: number;           // Seconds
-  endAt: number;             // Seconds
-  fadeInDuration: number;    // Min 0.5s
-  fadeOutDuration: number;   // Min 0.5s
+  size: number;
+  opacity: number;
+  x: number;
+  y: number;
+  startAt: number;
+  endAt: number;
+  fadeInDuration: number;
+  fadeOutDuration: number;
 };
 
 export type RenderRequest = {

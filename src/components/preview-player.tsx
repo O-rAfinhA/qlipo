@@ -106,12 +106,13 @@ export type PreviewPlayerProps = {
   viewportHeight:          number;
   textOverlays?:           TextOverlay[];
   watermarks?:             Watermark[];
-  syncBeats?:              number[];   // beat timestamps — cyan marks on scrub bar
-  syncEvents?:             number[];   // rock event timestamps — violet marks
+  syncBeats?:              number[];
+  syncEvents?:             number[];
   onPlayheadChange:        (t: number) => void;
   onPlayToggle:            () => void;
   onStop:                  () => void;
   onViewportHeightChange?: (h: number) => void;
+  onUpdateWatermark?:      (id: string, x: number, y: number) => void;
 };
 
 const MIN_VIEWPORT_H = 120;
@@ -127,7 +128,7 @@ export function PreviewPlayer({
   watermarks = [],
   syncBeats = [],
   syncEvents = [],
-  onPlayheadChange, onPlayToggle, onStop, onViewportHeightChange,
+  onPlayheadChange, onPlayToggle, onStop, onViewportHeightChange, onUpdateWatermark,
 }: PreviewPlayerProps) {
 
   const topVideoRef = useRef<HTMLVideoElement>(null);
@@ -480,10 +481,10 @@ export function PreviewPlayer({
           {/* Watermarks */}
           <WatermarkPreviewLayer
             watermarks={watermarks}
-            media={media}
             playheadAt={playheadAt}
             presetWidth={presetWidth}
             presetHeight={presetHeight}
+            onUpdatePosition={onUpdateWatermark}
           />
 
           {/* Hover play/pause overlay */}

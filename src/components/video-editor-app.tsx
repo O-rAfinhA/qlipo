@@ -765,6 +765,7 @@ export function VideoEditorApp() {
                 onPlayToggle={togglePlay}
                 onStop={stopPlayback}
                 onViewportHeightChange={setPreviewHeight}
+                onUpdateWatermark={(id, x, y) => updateWatermark(id, { x, y })}
               />
 
               {/* ── Sync mode toolbar (auto mode) ──────────────────────── */}
@@ -1058,6 +1059,7 @@ export function VideoEditorApp() {
                 onPlayToggle={togglePlay}
                 onStop={stopPlayback}
                 onViewportHeightChange={setPreviewHeight}
+                onUpdateWatermark={(id, x, y) => updateWatermark(id, { x, y })}
               />
               {visuals.length === 0 && audios.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center">

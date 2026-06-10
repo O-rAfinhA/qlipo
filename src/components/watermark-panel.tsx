@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import type { Watermark, WatermarkPosition, MediaItem } from '@/lib/types';
+import type { Watermark, MediaItem } from '@/lib/types';
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
 
 interface WatermarkPanelProps {
   watermarks: Watermark[];
@@ -12,195 +14,74 @@ interface WatermarkPanelProps {
   onRemove: (id: string) => void;
 }
 
-const POSITION_OPTIONS: WatermarkPosition[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
-const POSITION_LABELS: Record<WatermarkPosition, string> = {
-  'top-left': 'Superior Esq',
-  'top-right': 'Superior Dir',
-  'bottom-left': 'Inferior Esq',
-  'bottom-right': 'Inferior Dir',
-  'center': 'Centro',
-};
-
-function PositionSelector({
-  value,
-  onChange,
-}: {
-  value: WatermarkPosition;
-  onChange: (pos: WatermarkPosition) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="text-xs text-gray-300 block">Posição</label>
-      <div className="relative w-full aspect-video bg-gradient-to-br from-slate-700 to-slate-800 rounded-lg border border-slate-600">
-        {/* Video frame representation */}
-        <div className="absolute inset-0 p-2 pointer-events-none">
-          <div className="w-full h-full border border-dashed border-slate-500 rounded opacity-50" />
-        </div>
-
-        {/* Top-left button */}
-        <button
-          onClick={() => onChange('top-left')}
-          className={`absolute top-1.5 left-1.5 w-12 h-6 rounded text-xs font-medium transition-all z-10 ${
-            value === 'top-left'
-              ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-              : 'bg-slate-600/40 text-gray-300 hover:bg-slate-600/60'
-          }`}
-          title={POSITION_LABELS['top-left']}
-        >
-          ⬉
-        </button>
-
-        {/* Top-right button */}
-        <button
-          onClick={() => onChange('top-right')}
-          className={`absolute top-1.5 right-1.5 w-12 h-6 rounded text-xs font-medium transition-all z-10 ${
-            value === 'top-right'
-              ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-              : 'bg-slate-600/40 text-gray-300 hover:bg-slate-600/60'
-          }`}
-          title={POSITION_LABELS['top-right']}
-        >
-          ⬈
-        </button>
-
-        {/* Center button */}
-        <button
-          onClick={() => onChange('center')}
-          className={`absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full font-medium transition-all z-20 ${
-            value === 'center'
-              ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-              : 'bg-slate-600/40 text-gray-300 hover:bg-slate-600/60'
-          }`}
-          title={POSITION_LABELS['center']}
-        >
-          ◉
-        </button>
-
-        {/* Bottom-left button */}
-        <button
-          onClick={() => onChange('bottom-left')}
-          className={`absolute bottom-1.5 left-1.5 w-12 h-6 rounded text-xs font-medium transition-all z-10 ${
-            value === 'bottom-left'
-              ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-              : 'bg-slate-600/40 text-gray-300 hover:bg-slate-600/60'
-          }`}
-          title={POSITION_LABELS['bottom-left']}
-        >
-          ⬇⬉
-        </button>
-
-        {/* Bottom-right button */}
-        <button
-          onClick={() => onChange('bottom-right')}
-          className={`absolute bottom-1.5 right-1.5 w-12 h-6 rounded text-xs font-medium transition-all z-10 ${
-            value === 'bottom-right'
-              ? 'bg-blue-600 text-white ring-2 ring-blue-400'
-              : 'bg-slate-600/40 text-gray-300 hover:bg-slate-600/60'
-          }`}
-          title={POSITION_LABELS['bottom-right']}
-        >
-          ⬇⬈
-        </button>
-      </div>
-
-      {/* Position label */}
-      <div className="text-xs text-gray-400 text-center">
-        {POSITION_LABELS[value]}
-      </div>
-    </div>
-  );
-}
-
 export function WatermarkPanel({
-  watermarks,
-  media,
-  totalDuration,
-  onAdd,
-  onUpdate,
-  onRemove,
+  watermarks, media, totalDuration, onAdd, onUpdate, onRemove,
 }: WatermarkPanelProps) {
-  const [showForm, setShowForm] = useState(false);
-  const [uploadError, setUploadError] = useState<string>('');
-  const [formData, setFormData] = useState<Partial<Watermark>>({
-    size: 20,
-    opacity: 80,
-    position: 'bottom-right',
-    fadeInDuration: 0.5,
-    fadeOutDuration: 0.5,
+  const [showForm,     setShowForm]     = useState(false);
+  const [uploadError,  setUploadError]  = useState('');
+  const [uploading,    setUploading]    = useState(false);
+  const [formData,     setFormData]     = useState<Partial<Watermark>>({
+    size: 20, opacity: 80, x: 75, y: 75, fadeInDuration: 0.5, fadeOutDuration: 0.5,
   });
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+    setUploadError('');
+    setUploading(true);
     try {
-      setUploadError('');
-      const formDataToSend = new FormData();
-      formDataToSend.append('file', file);
-
-      const response = await fetch('/api/uploads/watermark', {
+      // Get presigned URL from backend
+      const urlRes = await fetch(`${BACKEND_URL}/api/uploads/watermark-url`, {
         method: 'POST',
-        body: formDataToSend,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contentType: file.type, sizeBytes: file.size }),
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        setUploadError(error.message || 'Upload failed');
+      if (!urlRes.ok) {
+        const err = await urlRes.json();
+        setUploadError(err.error ?? 'Erro ao obter URL de upload.');
         return;
       }
+      const { uploadUrl, r2Key } = await urlRes.json() as { uploadUrl: string; r2Key: string };
 
-      const result = await response.json();
+      // Upload directly to R2
+      const putRes = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+      if (!putRes.ok) { setUploadError('Erro ao enviar imagem para o armazenamento.'); return; }
+
       setFormData((prev) => ({
         ...prev,
-        mediaId: result.name,
-        imageUrl: URL.createObjectURL(file),
+        mediaId: r2Key,
+        imageUrl: `${BACKEND_URL}/api/media/preview?r2Key=${encodeURIComponent(r2Key)}`,
       }));
-    } catch (err) {
-      setUploadError('Error uploading watermark');
-      console.error(err);
+    } catch {
+      setUploadError('Erro ao fazer upload da marca d\'água.');
+    } finally {
+      setUploading(false);
     }
   };
 
-  const handleAddWatermark = () => {
-    if (!formData.mediaId || !formData.size || formData.opacity === undefined) {
-      setUploadError('Please fill in all required fields');
+  const handleAdd = () => {
+    if (!formData.mediaId || formData.size == null || formData.opacity == null) {
+      setUploadError('Selecione uma imagem primeiro.');
       return;
     }
-
     const startAt = 3;
-    const endAt = Math.max(startAt + 1, totalDuration - 5);
-
-    const newWatermark: Watermark = {
-      id: crypto.randomUUID(),
-      mediaId: formData.mediaId,
-      imageUrl: formData.imageUrl,
-      size: formData.size,
-      opacity: formData.opacity,
-      position: formData.position || 'bottom-right',
+    const endAt   = Math.max(startAt + 1, totalDuration - 5);
+    onAdd({
+      id:              crypto.randomUUID(),
+      mediaId:         formData.mediaId!,
+      imageUrl:        formData.imageUrl,
+      size:            formData.size!,
+      opacity:         formData.opacity!,
+      x:               formData.x ?? 75,
+      y:               formData.y ?? 75,
       startAt,
       endAt,
-      fadeInDuration: formData.fadeInDuration || 0.5,
-      fadeOutDuration: formData.fadeOutDuration || 0.5,
-    };
-
-    onAdd(newWatermark);
-    setShowForm(false);
-    setFormData({
-      size: 20,
-      opacity: 80,
-      position: 'bottom-right',
-      fadeInDuration: 0.5,
-      fadeOutDuration: 0.5,
+      fadeInDuration:  formData.fadeInDuration ?? 0.5,
+      fadeOutDuration: formData.fadeOutDuration ?? 0.5,
     });
+    setShowForm(false);
+    setFormData({ size: 20, opacity: 80, x: 75, y: 75, fadeInDuration: 0.5, fadeOutDuration: 0.5 });
     setUploadError('');
-  };
-
-  const handlePositionChange = (pos: WatermarkPosition) => {
-    setFormData((prev) => ({ ...prev, position: pos }));
-  };
-
-  const handleUpdateWatermark = (id: string, field: keyof Watermark, value: any) => {
-    onUpdate(id, { [field]: value });
   };
 
   return (
@@ -219,160 +100,95 @@ export function WatermarkPanel({
         <div className="space-y-3 p-3 bg-slate-800 rounded border border-slate-600">
           {/* File Upload */}
           <div>
-            <label className="text-xs text-gray-300 block mb-1">Imagem (JPG, PNG, WEBP - Max 5MB)</label>
+            <label className="text-xs text-gray-300 block mb-1">Imagem (JPG, PNG, WEBP — Max 5 MB)</label>
             <input
               type="file"
               accept=".jpg,.jpeg,.png,.webp"
               onChange={handleFileSelect}
-              className="w-full text-xs bg-slate-700 text-white rounded px-2 py-1 border border-slate-600"
+              disabled={uploading}
+              className="w-full text-xs bg-slate-700 text-white rounded px-2 py-1 border border-slate-600 disabled:opacity-50"
             />
             {uploadError && <p className="text-xs text-red-400 mt-1">{uploadError}</p>}
-            {formData.imageUrl && (
-              <div className="mt-2 text-xs text-green-400">✓ Imagem selecionada</div>
+            {uploading   && <p className="text-xs text-zinc-400 mt-1">Enviando...</p>}
+            {formData.imageUrl && !uploading && (
+              <div className="mt-2 flex items-center gap-2">
+                <img src={formData.imageUrl} alt="preview" className="h-8 rounded border border-slate-600 object-contain bg-slate-700" />
+                <span className="text-xs text-green-400">Imagem carregada</span>
+              </div>
             )}
           </div>
 
-          {/* Size Slider */}
+          {/* Size */}
           <div>
-            <label className="text-xs text-gray-300 flex justify-between">
-              <span>Tamanho</span>
-              <span>{formData.size}%</span>
-            </label>
-            <input
-              type="range"
-              min="5"
-              max="50"
-              step="1"
-              value={formData.size || 20}
+            <label className="text-xs text-gray-300 flex justify-between"><span>Tamanho</span><span>{formData.size}%</span></label>
+            <input type="range" min="5" max="50" step="1" value={formData.size ?? 20}
               onChange={(e) => setFormData({ ...formData, size: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer"
-            />
+              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
           </div>
 
-          {/* Opacity Slider */}
+          {/* Opacity */}
           <div>
-            <label className="text-xs text-gray-300 flex justify-between">
-              <span>Opacidade</span>
-              <span>{formData.opacity}%</span>
-            </label>
-            <input
-              type="range"
-              min="10"
-              max="100"
-              step="1"
-              value={formData.opacity || 80}
+            <label className="text-xs text-gray-300 flex justify-between"><span>Opacidade</span><span>{formData.opacity}%</span></label>
+            <input type="range" min="10" max="100" step="1" value={formData.opacity ?? 80}
               onChange={(e) => setFormData({ ...formData, opacity: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer"
-            />
+              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
           </div>
 
-          {/* Position Selector */}
-          <PositionSelector
-            value={formData.position || 'bottom-right'}
-            onChange={handlePositionChange}
-          />
-
-          {/* Fade In Duration */}
+          {/* Fade In */}
           <div>
-            <label className="text-xs text-gray-300 flex justify-between">
-              <span>Fade In (s)</span>
-              <span>{formData.fadeInDuration?.toFixed(1)}</span>
-            </label>
-            <input
-              type="range"
-              min="0.5"
-              max="3"
-              step="0.1"
-              value={formData.fadeInDuration || 0.5}
+            <label className="text-xs text-gray-300 flex justify-between"><span>Fade In (s)</span><span>{formData.fadeInDuration?.toFixed(1)}</span></label>
+            <input type="range" min="0.5" max="3" step="0.1" value={formData.fadeInDuration ?? 0.5}
               onChange={(e) => setFormData({ ...formData, fadeInDuration: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer"
-            />
+              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
           </div>
 
-          {/* Fade Out Duration */}
+          {/* Fade Out */}
           <div>
-            <label className="text-xs text-gray-300 flex justify-between">
-              <span>Fade Out (s)</span>
-              <span>{formData.fadeOutDuration?.toFixed(1)}</span>
-            </label>
-            <input
-              type="range"
-              min="0.5"
-              max="3"
-              step="0.1"
-              value={formData.fadeOutDuration || 0.5}
+            <label className="text-xs text-gray-300 flex justify-between"><span>Fade Out (s)</span><span>{formData.fadeOutDuration?.toFixed(1)}</span></label>
+            <input type="range" min="0.5" max="3" step="0.1" value={formData.fadeOutDuration ?? 0.5}
               onChange={(e) => setFormData({ ...formData, fadeOutDuration: Number(e.target.value) })}
-              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer"
-            />
+              className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
           </div>
 
-          {/* Add Button */}
-          <button
-            onClick={handleAddWatermark}
-            className="w-full px-3 py-2 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition font-medium"
-          >
+          <p className="text-[10px] text-zinc-500">Após adicionar, arraste a marca d'água diretamente no preview para posicioná-la.</p>
+
+          <button onClick={handleAdd} disabled={!formData.mediaId || uploading}
+            className="w-full px-3 py-2 text-xs bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded transition font-medium">
             Adicionar Marca D'Água
           </button>
         </div>
       )}
 
-      {/* Watermark List */}
-      {watermarks.length > 0 && (
-        <div className="space-y-2 max-h-60 overflow-y-auto">
-          {watermarks.map((wm) => (
-            <div key={wm.id} className="p-3 bg-slate-800 rounded border border-slate-600 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-white truncate">{wm.mediaId}</p>
-                  <p className="text-xs text-gray-400">
-                    {wm.startAt.toFixed(1)}s - {wm.endAt.toFixed(1)}s
-                  </p>
-                </div>
-                <button
-                  onClick={() => onRemove(wm.id)}
-                  className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
-                >
-                  ✕
-                </button>
-              </div>
+      {/* List */}
+      {watermarks.map((wm) => (
+        <div key={wm.id} className="p-3 bg-slate-800 rounded border border-slate-600 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            {wm.imageUrl && (
+              <img src={wm.imageUrl} alt="wm" className="h-7 w-auto rounded border border-slate-600 object-contain bg-slate-700 shrink-0" />
+            )}
+            <p className="text-[10px] text-gray-400 flex-1">{wm.startAt.toFixed(1)}s – {wm.endAt.toFixed(1)}s</p>
+            <button onClick={() => onRemove(wm.id)}
+              className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded shrink-0">✕</button>
+          </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <label className="text-gray-400">Tamanho</label>
-                  <input
-                    type="range"
-                    min="5"
-                    max="50"
-                    step="1"
-                    value={wm.size}
-                    onChange={(e) => handleUpdateWatermark(wm.id, 'size', Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer"
-                  />
-                  <p className="text-gray-500 text-xs">{wm.size}%</p>
-                </div>
-                <div>
-                  <label className="text-gray-400">Opacidade</label>
-                  <input
-                    type="range"
-                    min="10"
-                    max="100"
-                    step="1"
-                    value={wm.opacity}
-                    onChange={(e) => handleUpdateWatermark(wm.id, 'opacity', Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer"
-                  />
-                  <p className="text-gray-500 text-xs">{wm.opacity}%</p>
-                </div>
-              </div>
-
-              <PositionSelector
-                value={wm.position}
-                onChange={(pos) => handleUpdateWatermark(wm.id, 'position', pos)}
-              />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-gray-400 flex justify-between"><span>Tamanho</span><span>{wm.size}%</span></label>
+              <input type="range" min="5" max="50" step="1" value={wm.size}
+                onChange={(e) => onUpdate(wm.id, { size: Number(e.target.value) })}
+                className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
             </div>
-          ))}
+            <div>
+              <label className="text-[10px] text-gray-400 flex justify-between"><span>Opacidade</span><span>{wm.opacity}%</span></label>
+              <input type="range" min="10" max="100" step="1" value={wm.opacity}
+                onChange={(e) => onUpdate(wm.id, { opacity: Number(e.target.value) })}
+                className="w-full h-1.5 bg-slate-600 rounded appearance-none cursor-pointer" />
+            </div>
+          </div>
+
+          <p className="text-[10px] text-zinc-600">Posição: {wm.x.toFixed(0)}% × {wm.y.toFixed(0)}% — arraste no preview para reposicionar</p>
         </div>
-      )}
+      ))}
 
       {watermarks.length === 0 && !showForm && (
         <p className="text-xs text-gray-500 text-center py-2">Nenhuma marca d'água adicionada</p>
