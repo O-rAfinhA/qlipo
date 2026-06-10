@@ -25,7 +25,8 @@ router.get("/media/preview", async (req, res) => {
       return;
     }
 
-    const previewKey = `previews/${Buffer.from(r2Key).toString("base64url").slice(0, 32)}.mp4`;
+    // v2 suffix forces regeneration after codec fix (H.264 high profile + even dimensions)
+    const previewKey = `previews/v2-${Buffer.from(r2Key).toString("base64url").slice(0, 32)}.mp4`;
 
     // Serve existing preview if already generated
     if (await keyExists(previewKey)) {
@@ -43,13 +44,23 @@ router.get("/media/preview", async (req, res) => {
 
     await downloadToFile(r2Key, srcPath);
 
-    // Generate preview with FFmpeg
+    // Generate browser-compatible H.264 preview.
+    // scale=1280:-2 ensures even dimensions (H.264 requires even width/height).
+    // profile:v high / level 4.0 gives broad browser support including Safari.
+    // pix_fmt yuv420p is required for Safari/iOS compatibility.
     await new Promise<void>((resolve, reject) => {
       Ffmpeg(srcPath)
         .videoCodec("libx264")
         .audioCodec("aac")
-        .outputOptions(["-movflags +faststart", "-pix_fmt yuv420p", "-preset veryfast", "-crf 23"])
-        .size("1280x?")
+        .outputOptions([
+          "-movflags +faststart",
+          "-pix_fmt yuv420p",
+          "-profile:v high",
+          "-level:v 4.0",
+          "-preset veryfast",
+          "-crf 23",
+          "-vf scale=1280:-2",
+        ])
         .on("end", () => resolve())
         .on("error", (err) => reject(err))
         .save(outPath);
