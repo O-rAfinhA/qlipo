@@ -67,6 +67,12 @@ export async function keyExists(key: string): Promise<boolean> {
   }
 }
 
+export async function getObjectStream(key: string) {
+  const res = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  if (!res.Body) throw new Error(`R2 key not found: ${key}`);
+  return { body: res.Body as Readable, contentType: res.ContentType, contentLength: res.ContentLength };
+}
+
 export async function downloadToBuffer(key: string): Promise<Buffer> {
   const res = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
   if (!res.Body) throw new Error(`R2 key not found: ${key}`);

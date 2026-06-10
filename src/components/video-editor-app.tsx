@@ -331,7 +331,14 @@ export function VideoEditorApp() {
   function getFirstAudio() {
     return audios
       .map((a) => media.find((m) => m.id === a.mediaId))
-      .find((m) => m?.kind === "audio" && m.previewUrl) ?? null;
+      .find((m) => m?.kind === "audio" && (m.r2Key || m.previewUrl)) ?? null;
+  }
+
+  function audioAnalysisUrl(item: { r2Key?: string; previewUrl?: string }) {
+    // Use direct stream endpoint when possible to avoid cross-origin redirect
+    // issues with fetch() + arrayBuffer() that affect beat/rock analysis.
+    if (item.r2Key) return `${BACKEND_URL}/api/media/stream?r2Key=${encodeURIComponent(item.r2Key)}`;
+    return item.previewUrl ?? "";
   }
 
   // ── Beat mode: detecta BPM + timestamps exatos de batida ─────────────────
@@ -339,7 +346,7 @@ export function VideoEditorApp() {
 
   async function handleActivateBeat() {
     const audioItem = getFirstAudio();
-    if (!audioItem?.previewUrl) return;
+    if (!audioItem) return;
 
     // Desativa Rock se estiver ativo
     setMusicalEvents([]);
@@ -347,7 +354,7 @@ export function VideoEditorApp() {
     setBeats([]);
     setBpm(0);
     try {
-      const result = await analyzeBeat(audioItem.previewUrl);
+      const result = await analyzeBeat(audioAnalysisUrl(audioItem));
       setBpm(result.bpm);
       setBeats(result.beats);
     } catch (e) {
@@ -366,14 +373,14 @@ export function VideoEditorApp() {
 
   async function handleActivateRock() {
     const audioItem = getFirstAudio();
-    if (!audioItem?.previewUrl) return;
+    if (!audioItem) return;
 
     // Desativa Beat se estiver ativo
     setBeats([]); setBpm(0);
     setAnalyzingEvents(true);
     setMusicalEvents([]);
     try {
-      const events = await analyzeMusicalEvents(audioItem.previewUrl);
+      const events = await analyzeMusicalEvents(audioAnalysisUrl(audioItem));
       setMusicalEvents(events);
       if (editMode === "manual") {
         syncClipsToEvents(events, summary.totalVideoSeconds || audioItem.durationSeconds);
