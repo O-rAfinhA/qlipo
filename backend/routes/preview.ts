@@ -16,10 +16,10 @@ router.get("/media/preview", async (req, res) => {
   }
 
   try {
-    // Images: redirect to R2 directly, no FFmpeg needed
-    const imageExts = ["jpg", "jpeg", "png", "webp", "gif", "avif"];
+    // Images and audio: redirect to R2 directly, no FFmpeg needed
+    const directExts = ["jpg", "jpeg", "png", "webp", "gif", "avif", "mp3", "wav", "ogg", "flac", "aac", "m4a", "opus"];
     const fileExt = r2Key.split(".").pop()?.toLowerCase() ?? "";
-    if (imageExts.includes(fileExt)) {
+    if (directExts.includes(fileExt)) {
       const downloadUrl = await generateDownloadUrl(r2Key, 3600);
       res.redirect(302, downloadUrl);
       return;
