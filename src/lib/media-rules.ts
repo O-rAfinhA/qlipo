@@ -169,6 +169,32 @@ function audioDurationFor(media: MediaItem[], mediaId: string) {
   return media.find((entry) => entry.id === mediaId)?.durationSeconds ?? 0;
 }
 
+function mediaBaseName(mediaId: string, media: MediaItem[]) {
+  return (media.find((m) => m.id === mediaId)?.name ?? "")
+    .replace(/\.[^.]+$/, "")
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Splits an already-ordered timeline array into { loopItems, finalItem }.
+ * finalItem is the last item ONLY when its media file is named "final"
+ * (case-insensitive, no extension). Otherwise finalItem is null and loopItems
+ * contains the full array.  Callers should loop only loopItems and then
+ * append finalItem once at the very end to guarantee Final is always last.
+ */
+function splitFinalItem<T extends { mediaId: string }>(
+  media: MediaItem[],
+  items: T[],
+): { loopItems: T[]; finalItem: T | null } {
+  if (items.length <= 1) return { loopItems: items, finalItem: null };
+  const last = items[items.length - 1];
+  if (mediaBaseName(last.mediaId, media) === "final") {
+    return { loopItems: items.slice(0, -1), finalItem: last };
+  }
+  return { loopItems: items, finalItem: null };
+}
+
 /**
  * Re-orders any timeline item array so that the item whose media file is named
  * "Intro" (case-insensitive, no extension) is always first and the one named
@@ -216,44 +242,60 @@ export function syncAudioToVideo(
     return [];
   }
 
-  const ordered = [...audios].sort((a, b) => a.order - b.order);
+  // Separate "Final" so it plays exactly once at the very end (not looped).
+  const { loopItems: loopAudios, finalItem: finalAudio } = splitFinalItem(media, [...audios].sort((a, b) => a.order - b.order));
+  const finalDuration = finalAudio ? audioDurationFor(media, finalAudio.mediaId) : 0;
+  const mainTarget    = Math.max(0, targetVideoSeconds - finalDuration);
+  const ordered       = loopAudios.length > 0 ? loopAudios : (finalAudio ? [] : [...audios].sort((a, b) => a.order - b.order));
+
   const segments: AudioSegment[] = [];
   let cursor = 0;
   let loopIndex = 0;
 
-  while (cursor < targetVideoSeconds) {
+  while (cursor < mainTarget && ordered.length > 0) {
     const current = ordered[loopIndex % ordered.length];
     const sourceDuration = audioDurationFor(media, current.mediaId);
     if (!sourceDuration) {
       loopIndex += 1;
-      if (loopIndex > ordered.length * 4 && !segments.length) {
-        break;
-      }
+      if (loopIndex > ordered.length * 4 && !segments.length) break;
       continue;
     }
 
-    const segmentStart = Math.max(0, cursor - (segments.length > 0 ? crossfadeSeconds : 0));
-    const remaining = targetVideoSeconds - segmentStart;
+    const segmentStart    = Math.max(0, cursor - (segments.length > 0 ? crossfadeSeconds : 0));
+    const remaining       = mainTarget - segmentStart;
     const plannedDuration = Math.min(sourceDuration, remaining);
-    const isFirst = segments.length === 0;
-    const willEndProject = segmentStart + plannedDuration >= targetVideoSeconds;
+    const isFirst         = segments.length === 0;
 
     segments.push({
       mediaId: current.mediaId,
       startAt: Number(segmentStart.toFixed(2)),
-      endAt: Number((segmentStart + plannedDuration).toFixed(2)),
+      endAt:   Number((segmentStart + plannedDuration).toFixed(2)),
       trimStart: 0,
-      trimEnd: Number(plannedDuration.toFixed(2)),
-      fadeInSeconds: isFirst ? DEFAULT_FADE_SECONDS : crossfadeSeconds,
-      fadeOutSeconds: willEndProject ? DEFAULT_FADE_SECONDS : crossfadeSeconds,
+      trimEnd:   Number(plannedDuration.toFixed(2)),
+      fadeInSeconds:  isFirst ? DEFAULT_FADE_SECONDS : crossfadeSeconds,
+      fadeOutSeconds: finalAudio  ? crossfadeSeconds : DEFAULT_FADE_SECONDS,
       gainDb: calcGainDb(current.volume ?? 1),
     });
 
     cursor = segmentStart + plannedDuration;
     loopIndex += 1;
-    if (loopIndex > ordered.length * 16) {
-      break;
-    }
+    if (loopIndex > ordered.length * 16) break;
+  }
+
+  // Append Final once as the absolute last segment
+  if (finalAudio && finalDuration > 0) {
+    const prevEnd = segments.at(-1)?.endAt ?? 0;
+    const startAt = Math.max(0, prevEnd - crossfadeSeconds);
+    segments.push({
+      mediaId:       finalAudio.mediaId,
+      startAt:       Number(startAt.toFixed(2)),
+      endAt:         Number((startAt + finalDuration).toFixed(2)),
+      trimStart:     0,
+      trimEnd:       finalDuration,
+      fadeInSeconds:  crossfadeSeconds,
+      fadeOutSeconds: DEFAULT_FADE_SECONDS,
+      gainDb: calcGainDb((finalAudio as AudioTimelineItem).volume ?? 1),
+    });
   }
 
   return segments;
@@ -303,6 +345,36 @@ function naturalAudioDuration(
 }
 
 /** Append random repeats of the visual pool until segments cover `targetSeconds`. */
+function appendFinalVisualSegment(
+  media: MediaItem[],
+  finalItem: VisualTimelineItem,
+  segments: VisualSegment[],
+): VisualSegment[] {
+  const source   = media.find((m) => m.id === finalItem.mediaId);
+  if (!source) return segments;
+  const duration = source.kind === "video" ? source.durationSeconds : finalItem.durationSeconds;
+  const fadeIn   = clampFade(duration, finalItem.fadeInSeconds);
+  const fadeOut  = clampFade(duration, finalItem.fadeOutSeconds);
+  const prev     = segments.at(-1);
+  // Overlap by the previous clip's fadeOut so the crossfade is seamless
+  const prevCursor = prev
+    ? prev.startAt + Math.max(0, (prev.endAt - prev.startAt) - prev.fadeOutSeconds)
+    : 0;
+  const startAt = Number(Math.max(0, prevCursor - fadeIn).toFixed(2));
+  return [...segments, {
+    mediaId: finalItem.mediaId,
+    startAt, endAt: Number((startAt + duration).toFixed(2)),
+    fadeInSeconds: fadeIn, fadeOutSeconds: fadeOut,
+    opacity:    finalItem.opacity    ?? 1,
+    brightness: finalItem.brightness ?? 1,
+    contrast:   finalItem.contrast   ?? 1,
+    saturation: finalItem.saturation ?? 1,
+    blur:       finalItem.blur       ?? 0,
+    videoVolume: finalItem.volume    ?? 1,
+    transitionType: finalItem.transitionType,
+  }];
+}
+
 function extendVisualsToFillDuration(
   media: MediaItem[],
   pool: VisualTimelineItem[],
@@ -388,12 +460,14 @@ export function summarizeComposition(
 
   // ── Auto mode: randomised timing + optional music-driven sync ─────────────
   if (!hasManualAudio && visuals.some((v) => v.startAt === undefined)) {
-    // 1. Order visuals (then pin Intro first / Final last)
+    // 1. Order visuals (pin Intro first / Final last), then split Final out
+    //    so it never enters the loop pool — it is appended once at the end.
     const baseVisuals = mediaOrder === "random"
       ? shuffleArray([...visuals])
       : [...visuals].sort((a, b) => a.order - b.order);
     const orderedVisuals = applyIntroFinalOrder(media, baseVisuals)
       .map((item, idx) => ({ ...item, order: idx }));
+    const { loopItems: loopVisuals, finalItem: finalVisual } = splitFinalItem(media, orderedVisuals);
 
     const audioNatural = naturalAudioDuration(media, sortedAudios);
     let visualSegments: VisualSegment[];
@@ -407,7 +481,7 @@ export function summarizeComposition(
       const segs: VisualSegment[] = [];
       let overflowCursor = boundaries[boundaries.length - 1]; // for extra clips
 
-      orderedVisuals.forEach((item, idx) => {
+      loopVisuals.forEach((item, idx) => {
         const source = media.find((m) => m.id === item.mediaId);
         if (!source) return;
         const rng = seededRng(item.mediaId + "auto");
@@ -416,9 +490,11 @@ export function summarizeComposition(
           const sStart = boundaries[idx];
           const sEnd   = boundaries[idx + 1];
           const sDur   = sEnd - sStart;
-          const clipDur = source.kind === "image"
-            ? sDur
-            : Math.min(source.durationSeconds, sDur);
+          const isIntro = idx === 0 && mediaBaseName(item.mediaId, media) === "intro";
+          // Intro plays fully — never truncated to the event window
+          const clipDur = isIntro
+            ? source.durationSeconds
+            : (source.kind === "image" ? sDur : Math.min(source.durationSeconds, sDur));
           const fadeOut = clampFade(clipDur, Number((0.5 + rng() * 1.5).toFixed(1)));
           const fadeIn  = clampFade(clipDur, Number((0.3 + rng() * 0.9).toFixed(1)));
           segs.push({
@@ -456,7 +532,7 @@ export function summarizeComposition(
         const lastEnd = Math.max(...segs.map((s) => s.endAt));
         if (audioNatural > lastEnd) {
           visualSegments = extendVisualsToFillDuration(
-            media, orderedVisuals, segs, audioNatural,
+            media, loopVisuals.length > 0 ? loopVisuals : orderedVisuals, segs, audioNatural,
           );
         } else {
           visualSegments = segs;
@@ -475,11 +551,12 @@ export function summarizeComposition(
         const halfBeat = Number((beatDur * 0.45).toFixed(3));
         const segs: VisualSegment[] = [];
         let beatIdx = 0;
-        let gi = 0; // global clip index — cycles through orderedVisuals indefinitely
+        let gi = 0; // global clip index — cycles through loopVisuals indefinitely
+        const beatPool = loopVisuals.length > 0 ? loopVisuals : orderedVisuals;
 
         // Loop through ALL beats, cycling clips so visuals never stop
         while (beatIdx < beats.length - 1) {
-          const item   = orderedVisuals[gi % orderedVisuals.length];
+          const item   = beatPool[gi % beatPool.length];
           const source = media.find((m) => m.id === item.mediaId);
           gi++;
           if (!source) continue;
@@ -494,9 +571,11 @@ export function summarizeComposition(
           const sDur    = sEnd - sStart;
           if (sDur < 0.2) { beatIdx++; continue; }
 
-          const clipDur = source.kind === "image"
-            ? sDur
-            : Math.min(source.durationSeconds, sDur);
+          const isIntro = gi === 1 && mediaBaseName(item.mediaId, media) === "intro";
+          // Intro plays fully — never truncated to the beat window
+          const clipDur = isIntro
+            ? source.durationSeconds
+            : (source.kind === "image" ? sDur : Math.min(source.durationSeconds, sDur));
           const fadeOut = clampFade(clipDur, halfBeat);
           const fadeIn  = clampFade(clipDur, halfBeat);
           const tType   = AUTO_TRANSITIONS[Math.floor(rngT() * AUTO_TRANSITIONS.length)];
@@ -523,15 +602,19 @@ export function summarizeComposition(
       } else {
         // ── Pure random (no beats): random durations aligned to BPM multiples ─
         const beatDur = bpm > 0 ? 60 / bpm : 0;
-        const randomizedVisuals = orderedVisuals.map((item) => {
+        const randomizedVisuals = (loopVisuals.length > 0 ? loopVisuals : orderedVisuals).map((item) => {
           const source = media.find((m) => m.id === item.mediaId);
           if (!source) return item;
+          const isIntro = mediaBaseName(item.mediaId, media) === "intro";
           const rng  = seededRng(item.mediaId + "auto");
           const rngT = seededRng(item.mediaId + "transition");
           const transitionType = AUTO_TRANSITIONS[Math.floor(rngT() * AUTO_TRANSITIONS.length)];
           if (source.kind === "image") {
             let dur: number;
-            if (beatDur > 0) {
+            if (isIntro) {
+              // Intro plays its full configured duration — never shortened
+              dur = item.durationSeconds;
+            } else if (beatDur > 0) {
               const nBeats = [2, 4, 8][Math.floor(rng() * 3)];
               dur = Math.max(1.5, Math.min(12, Number((nBeats * beatDur).toFixed(2))));
             } else {
@@ -541,6 +624,7 @@ export function summarizeComposition(
             const fadeIn  = clampFade(dur, Number((0.3 + rng() * 0.9).toFixed(1)));
             return { ...item, durationSeconds: dur, fadeInSeconds: fadeIn, fadeOutSeconds: fadeOut, transitionType };
           } else {
+            // Videos always use their full duration; Intro is no exception here
             const dur     = source.durationSeconds;
             const fadeOut = clampFade(dur, Number((0.5 + rng() * 1.5).toFixed(1)));
             const fadeIn  = clampFade(dur, Number((0.3 + rng() * 0.9).toFixed(1)));
@@ -607,6 +691,11 @@ export function summarizeComposition(
           fadeOutSeconds: Math.max(last.fadeOutSeconds, Math.min(FADE, lastDur / 2)),
         };
       }
+    }
+
+    // Append Final visual once at the very end (never looped)
+    if (finalVisual) {
+      visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
     }
 
     const totalVideoSeconds = Number(
