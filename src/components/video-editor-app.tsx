@@ -474,10 +474,27 @@ export function VideoEditorApp() {
           sourceRef.current = null;
         }
       };
-      source.onerror = (e) => {
+      source.onerror = async (e) => {
         console.error("[render] SSE erro:", e);
         source.close();
         sourceRef.current = null;
+        // Poll once to catch the result if the SSE dropped after the job finished
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/renders/${payload.jobId}`);
+          if (res.ok) {
+            const job = await res.json() as RenderJob;
+            if (job.stage === "finalizado" || job.stage === "erro") {
+              setProcessingState({
+                processing: false,
+                progress: job.progress,
+                progressMessage: job.message,
+                downloadUrl: job.downloadUrl,
+                simulationMode: job.mode === "simulation",
+              });
+              return;
+            }
+          }
+        } catch { /* ignore poll error */ }
         setProcessingState({ processing: false, progressMessage: "Erro na conexao com o servidor." });
       };
     } catch (err) {

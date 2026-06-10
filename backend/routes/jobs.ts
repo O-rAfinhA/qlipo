@@ -26,9 +26,11 @@ router.get("/renders/:jobId/stream", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // prevent Railway/nginx buffering
   res.flushHeaders();
 
   const send = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const ping = () => res.write(": ping\n\n");
 
   send(job);
 
@@ -37,15 +39,21 @@ router.get("/renders/:jobId/stream", (req, res) => {
     return;
   }
 
+  const keepalive = setInterval(ping, 15000);
+
   const unsubscribe = subscribeJob(jobId, (updated) => {
     send(updated);
     if (updated.stage === "finalizado" || updated.stage === "erro") {
+      clearInterval(keepalive);
       unsubscribe();
       res.end();
     }
   });
 
-  req.on("close", () => unsubscribe());
+  req.on("close", () => {
+    clearInterval(keepalive);
+    unsubscribe();
+  });
 });
 
 // Generate fresh presigned download URL from R2
