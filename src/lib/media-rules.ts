@@ -414,6 +414,40 @@ function extendVisualsToFillDuration(
   return segs;
 }
 
+/**
+ * Sequential audio: each track plays once in order, no looping.
+ * Used for basic auto mode. Beat/events modes use syncAudioToVideo instead.
+ */
+function buildSequentialAudioSegments(
+  media: MediaItem[],
+  audios: AudioTimelineItem[],
+): AudioSegment[] {
+  const ordered = [...audios].sort((a, b) => a.order - b.order);
+  let cursor = 0;
+  const result: AudioSegment[] = [];
+  for (let idx = 0; idx < ordered.length; idx++) {
+    const audio = ordered[idx];
+    const dur   = audioDurationFor(media, audio.mediaId);
+    if (!dur) continue;
+    const isFirst   = result.length === 0;
+    const isLast    = idx === ordered.length - 1;
+    const crossfade = isFirst ? 0 : DEFAULT_CROSSFADE_SECONDS;
+    const startAt   = Number(Math.max(0, cursor - crossfade).toFixed(2));
+    result.push({
+      mediaId:        audio.mediaId,
+      startAt,
+      endAt:          Number((startAt + dur).toFixed(2)),
+      trimStart:      0,
+      trimEnd:        dur,
+      fadeInSeconds:  isFirst ? DEFAULT_FADE_SECONDS : DEFAULT_CROSSFADE_SECONDS,
+      fadeOutSeconds: isLast  ? DEFAULT_FADE_SECONDS : DEFAULT_CROSSFADE_SECONDS,
+      gainDb:         calcGainDb((audio as AudioTimelineItem).volume ?? 1),
+    });
+    cursor = startAt + Math.max(0, dur - DEFAULT_CROSSFADE_SECONDS);
+  }
+  return result;
+}
+
 function buildManualAudioSegments(
   media: MediaItem[],
   audios: AudioTimelineItem[],
@@ -458,22 +492,22 @@ export function summarizeComposition(
   const hasManualAudio = audios.some((a) => a.startAt !== undefined);
   const sortedAudios   = applyIntroFinalOrder(media, audios);
 
-  // ── Auto mode: randomised timing + optional music-driven sync ─────────────
+  // ── Auto mode ─────────────────────────────────────────────────────────────
   if (!hasManualAudio && visuals.some((v) => v.startAt === undefined)) {
-    // 1. Order visuals (pin Intro first / Final last), then split Final out
-    //    so it never enters the loop pool — it is appended once at the end.
     const baseVisuals = mediaOrder === "random"
       ? shuffleArray([...visuals])
       : [...visuals].sort((a, b) => a.order - b.order);
     const orderedVisuals = applyIntroFinalOrder(media, baseVisuals)
       .map((item, idx) => ({ ...item, order: idx }));
-    const { loopItems: loopVisuals, finalItem: finalVisual } = splitFinalItem(media, orderedVisuals);
 
-    const audioNatural = naturalAudioDuration(media, sortedAudios);
     let visualSegments: VisualSegment[];
+    let useSequentialAudio = true; // basic auto uses sequential; beat/events use syncAudioToVideo
 
     if (musicalEvents.length > 0) {
       // ── Music-driven layout: each clip fills one musical section ────────────
+      useSequentialAudio = false;
+      const { loopItems: loopVisuals, finalItem: finalVisual } = splitFinalItem(media, orderedVisuals);
+      const audioNatural = naturalAudioDuration(media, sortedAudios);
       const totalRef = audioNatural || 60;
       const sortedEvts = [...musicalEvents].sort((a, b) => a - b).filter((t) => t > 0 && t < totalRef);
       const boundaries = [0, ...sortedEvts, totalRef];
@@ -540,6 +574,7 @@ export function summarizeComposition(
       } else {
         visualSegments = segs;
       }
+      if (finalVisual) visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
     } else {
       const AUTO_TRANSITIONS: XfadeTransitionType[] = [
         "fade", "wipeleft", "slideleft", "dissolve", "smoothup", "wiperight", "slideright",
@@ -547,6 +582,8 @@ export function summarizeComposition(
 
       // ── Beat-exact sync: position each clip to start at a beat timestamp ───
       if (beats.length >= 4 && bpm > 0) {
+        useSequentialAudio = false;
+        const { loopItems: loopVisuals, finalItem: finalVisual } = splitFinalItem(media, orderedVisuals);
         const beatDur  = 60 / bpm;
         const halfBeat = Number((beatDur * 0.45).toFixed(3));
         const segs: VisualSegment[] = [];
@@ -599,50 +636,12 @@ export function summarizeComposition(
         }
 
         visualSegments = segs;
+        if (finalVisual) visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
       } else {
-        // ── Pure random (no beats): random durations aligned to BPM multiples ─
-        const beatDur = bpm > 0 ? 60 / bpm : 0;
-        const randomizedVisuals = (loopVisuals.length > 0 ? loopVisuals : orderedVisuals).map((item) => {
-          const source = media.find((m) => m.id === item.mediaId);
-          if (!source) return item;
-          const isIntro = mediaBaseName(item.mediaId, media) === "intro";
-          const rng  = seededRng(item.mediaId + "auto");
-          const rngT = seededRng(item.mediaId + "transition");
-          const transitionType = AUTO_TRANSITIONS[Math.floor(rngT() * AUTO_TRANSITIONS.length)];
-          if (source.kind === "image") {
-            let dur: number;
-            if (isIntro) {
-              // Intro plays its full configured duration — never shortened
-              dur = item.durationSeconds;
-            } else if (beatDur > 0) {
-              const nBeats = [2, 4, 8][Math.floor(rng() * 3)];
-              dur = Math.max(1.5, Math.min(12, Number((nBeats * beatDur).toFixed(2))));
-            } else {
-              dur = Number((2 + rng() * 5).toFixed(1));
-            }
-            const fadeOut = clampFade(dur, Number((0.5 + rng() * 1.5).toFixed(1)));
-            const fadeIn  = clampFade(dur, Number((0.3 + rng() * 0.9).toFixed(1)));
-            return { ...item, durationSeconds: dur, fadeInSeconds: fadeIn, fadeOutSeconds: fadeOut, transitionType };
-          } else {
-            // Videos always use their full duration; Intro is no exception here
-            const dur     = source.durationSeconds;
-            const fadeOut = clampFade(dur, Number((0.5 + rng() * 1.5).toFixed(1)));
-            const fadeIn  = clampFade(dur, Number((0.3 + rng() * 0.9).toFixed(1)));
-            return { ...item, fadeInSeconds: fadeIn, fadeOutSeconds: fadeOut, transitionType };
-          }
-        });
-
-        visualSegments = computeVisualSegments(media, randomizedVisuals);
-
-        // If visuals shorter than audio, loop visuals randomly to fill
-        const initialVideoEnd = visualSegments.length
-          ? Math.max(...visualSegments.map((s) => s.endAt))
-          : 0;
-        if (audioNatural > initialVideoEnd && randomizedVisuals.length > 0) {
-          visualSegments = extendVisualsToFillDuration(
-            media, randomizedVisuals, visualSegments, audioNatural,
-          );
-        }
+        // ── Basic sequential mode (no beat sync, no events) ──────────────────
+        // Each clip plays once in order using its natural/configured duration.
+        // No randomization, no looping. One continuous visual track.
+        visualSegments = computeVisualSegments(media, orderedVisuals);
       }
     }
 
@@ -693,16 +692,15 @@ export function summarizeComposition(
       }
     }
 
-    // Append Final visual once at the very end (never looped)
-    if (finalVisual) {
-      visualSegments = appendFinalVisualSegment(media, finalVisual, visualSegments);
-    }
-
     const totalVideoSeconds = Number(
       (visualSegments.length ? Math.max(...visualSegments.map((s) => s.endAt)) : 0).toFixed(2),
     );
 
-    const audioSegments = syncAudioToVideo(media, sortedAudios, totalVideoSeconds);
+    // Sequential audio for basic mode; beat/events modes loop to fill video duration
+    const audioSegments = useSequentialAudio
+      ? buildSequentialAudioSegments(media, sortedAudios)
+      : syncAudioToVideo(media, sortedAudios, totalVideoSeconds);
+
     const totalAudioSeconds = Number(
       (audioSegments.length ? Math.max(...audioSegments.map((s) => s.endAt)) : 0).toFixed(2),
     );
