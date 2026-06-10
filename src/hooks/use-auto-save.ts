@@ -17,9 +17,18 @@ type AutoSaveState = {
 };
 
 export function useAutoSave(state: AutoSaveState, debounceMs = 300) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef  = useRef(false);
 
   useEffect(() => {
+    // Skip the very first run — let the session-restore effect load localStorage first.
+    // On the first render the store is empty (media=[]), which would incorrectly
+    // trigger clearLocalStorage() before the restore has had a chance to run.
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+
     if (timerRef.current) clearTimeout(timerRef.current);
 
     if (state.media.length === 0) {
