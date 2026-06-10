@@ -238,3 +238,114 @@ describe("summarizeComposition — ordenacao Intro/Final (integracao via syncAud
     expect(byTime[2].mediaId).toBe("m-intro");   // startAt=20 preserved
   });
 });
+
+// ─── applyIntroFinalOrder — visuais ───────────────────────────────────────────
+
+const mkVisualMedia = (id: string, name: string, dur = 5): MediaItem => ({
+  id, name, kind: "video", format: name.split(".").pop()!, sizeBytes: 1024,
+  durationSeconds: dur, valid: true, issues: [],
+});
+const mkVisual = (id: string, mediaId: string, order: number): VisualTimelineItem => ({
+  id, mediaId, kind: "video", order, durationSeconds: 5, fadeInSeconds: 0, fadeOutSeconds: 0,
+});
+
+describe("applyIntroFinalOrder — visuais", () => {
+  const introVid  = mkVisualMedia("mv-intro",  "Intro.mp4");
+  const finalVid  = mkVisualMedia("mv-final",  "Final.mp4");
+  const clip2     = mkVisualMedia("mv-clip2",  "clip2.mp4");
+  const clip3     = mkVisualMedia("mv-clip3",  "clip3.mp4");
+
+  const introClip = mkVisual("vt-intro", "mv-intro", 3);
+  const finalClip = mkVisual("vt-final", "mv-final", 0);
+  const clip2Item = mkVisual("vt-clip2", "mv-clip2", 1);
+  const clip3Item = mkVisual("vt-clip3", "mv-clip3", 2);
+
+  const allMedia = [introVid, finalVid, clip2, clip3];
+
+  it("coloca Intro primeiro e Final por ultimo (ambas presentes)", () => {
+    const result = applyIntroFinalOrder(allMedia, [finalClip, clip2Item, introClip, clip3Item]);
+    expect(result.map((v) => v.mediaId)).toEqual(["mv-intro", "mv-clip2", "mv-clip3", "mv-final"]);
+  });
+
+  it("coloca Intro primeiro quando apenas ela existe", () => {
+    const result = applyIntroFinalOrder([introVid, clip2, clip3], [clip3Item, introClip, clip2Item]);
+    expect(result[0].mediaId).toBe("mv-intro");
+    expect(result.map((v) => v.mediaId)).not.toContain("mv-final");
+  });
+
+  it("coloca Final por ultimo quando apenas ela existe", () => {
+    const result = applyIntroFinalOrder([finalVid, clip2, clip3], [finalClip, clip2Item, clip3Item]);
+    expect(result[result.length - 1].mediaId).toBe("mv-final");
+    expect(result[0].mediaId).not.toBe("mv-final");
+  });
+
+  it("nao altera a ordem quando nem Intro nem Final existem", () => {
+    const result = applyIntroFinalOrder([clip2, clip3], [clip3Item, clip2Item]);
+    expect(result.map((v) => v.mediaId)).toEqual(["mv-clip3", "mv-clip2"]);
+  });
+
+  it("re-indexa os campos order apos reordenacao", () => {
+    const result = applyIntroFinalOrder(allMedia, [finalClip, clip2Item, introClip, clip3Item]);
+    result.forEach((v, i) => expect(v.order).toBe(i));
+  });
+});
+
+describe("summarizeComposition — ordenacao Intro/Final visuais (auto mode)", () => {
+  const introVid  = mkVisualMedia("mv-intro",  "Intro.mp4",  5);
+  const finalVid  = mkVisualMedia("mv-final",  "Final.mp4",  5);
+  const clip2     = mkVisualMedia("mv-clip2",  "clip2.mp4",  5);
+  const audioMed  = mkAudioMedia ("ma-theme",  "theme.mp3",  60);
+  const audioItem: AudioTimelineItem = { id: "at-1", mediaId: "ma-theme", order: 0 };
+
+  const mkV = (id: string, mediaId: string, order: number): VisualTimelineItem => ({
+    id, mediaId, kind: "video", order, durationSeconds: 5, fadeInSeconds: 0, fadeOutSeconds: 0,
+  });
+
+  it("modo auto: Intro primeiro, Final ultimo (ambas presentes)", () => {
+    const visualsInput = [
+      mkV("vt-final", "mv-final", 0),
+      mkV("vt-clip2", "mv-clip2", 1),
+      mkV("vt-intro", "mv-intro", 2),
+    ];
+    const summary = summarizeComposition(
+      [introVid, finalVid, clip2, audioMed],
+      visualsInput, [audioItem],
+    );
+    const ids = summary.visualSegments.map((s) => s.mediaId);
+    expect(ids[0]).toBe("mv-intro");
+    expect(ids[ids.length - 1]).toBe("mv-final");
+    expect(ids).toContain("mv-clip2");
+  });
+
+  it("modo auto: apenas Intro — fica primeiro", () => {
+    const visualsInput = [mkV("vt-clip2", "mv-clip2", 0), mkV("vt-intro", "mv-intro", 1)];
+    const summary = summarizeComposition(
+      [introVid, clip2, audioMed], visualsInput, [audioItem],
+    );
+    expect(summary.visualSegments[0].mediaId).toBe("mv-intro");
+  });
+
+  it("modo auto: apenas Final — fica ultimo", () => {
+    const visualsInput = [mkV("vt-final", "mv-final", 0), mkV("vt-clip2", "mv-clip2", 1)];
+    const summary = summarizeComposition(
+      [finalVid, clip2, audioMed], visualsInput, [audioItem],
+    );
+    const ids = summary.visualSegments.map((s) => s.mediaId);
+    // Final should be last before any looping repeats
+    const lastFinalIdx  = ids.lastIndexOf("mv-final");
+    const lastOtherIdx  = ids.lastIndexOf("mv-clip2");
+    expect(lastFinalIdx).toBeGreaterThan(lastOtherIdx < lastFinalIdx ? -1 : lastOtherIdx);
+    expect(ids[0]).toBe("mv-clip2");
+  });
+
+  it("modo auto: sem Intro nem Final — ordem original preservada", () => {
+    const visualsInput = [mkV("vt-final", "mv-final", 1), mkV("vt-clip2", "mv-clip2", 0)];
+    // Rename so neither matches intro/final
+    const renamedFinal = { ...finalVid, name: "sceneB.mp4" };
+    const summary = summarizeComposition(
+      [renamedFinal, clip2, audioMed], visualsInput, [audioItem],
+    );
+    // clip2 has lower order so it should come first
+    expect(summary.visualSegments[0].mediaId).toBe("mv-clip2");
+  });
+});

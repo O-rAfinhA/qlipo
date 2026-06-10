@@ -170,17 +170,18 @@ function audioDurationFor(media: MediaItem[], mediaId: string) {
 }
 
 /**
- * Re-orders audio tracks so that the track named "Intro" (case-insensitive,
- * no extension) is always first and the track named "Final" is always last.
- * All other tracks keep their relative order between those two anchors.
- * Works in both auto and manual mode — in manual mode the startAt times are
- * preserved, only the array order (and order field) changes.
+ * Re-orders any timeline item array so that the item whose media file is named
+ * "Intro" (case-insensitive, no extension) is always first and the one named
+ * "Final" is always last. All other items keep their relative order between
+ * those two anchors. Works for both audio and visual timeline items.
+ * In manual mode the startAt times are preserved — only the array position and
+ * the order field change.
  */
-export function applyIntroFinalOrder(
+export function applyIntroFinalOrder<T extends { mediaId: string; order: number }>(
   media: MediaItem[],
-  audios: AudioTimelineItem[],
-): AudioTimelineItem[] {
-  if (audios.length <= 1) return audios;
+  items: T[],
+): T[] {
+  if (items.length <= 1) return items;
 
   const baseName = (mediaId: string) =>
     (media.find((m) => m.id === mediaId)?.name ?? "")
@@ -188,9 +189,9 @@ export function applyIntroFinalOrder(
       .toLowerCase()
       .trim();
 
-  const intro  = audios.find((a) => baseName(a.mediaId) === "intro");
-  const final_ = audios.find((a) => baseName(a.mediaId) === "final");
-  const rest   = audios.filter((a) => a !== intro && a !== final_);
+  const intro  = items.find((a) => baseName(a.mediaId) === "intro");
+  const final_ = items.find((a) => baseName(a.mediaId) === "final");
+  const rest   = items.filter((a) => a !== intro && a !== final_);
 
   const ordered = [
     ...(intro  ? [intro]  : []),
@@ -198,7 +199,6 @@ export function applyIntroFinalOrder(
     ...(final_ ? [final_] : []),
   ];
 
-  // Re-index so syncAudioToVideo's sort-by-order reflects the new sequence
   return ordered.map((a, i) => ({ ...a, order: i }));
 }
 
@@ -388,12 +388,12 @@ export function summarizeComposition(
 
   // ── Auto mode: randomised timing + optional music-driven sync ─────────────
   if (!hasManualAudio && visuals.some((v) => v.startAt === undefined)) {
-    // 1. Order visuals
-    const orderedVisuals = (
-      mediaOrder === "random"
-        ? shuffleArray([...visuals])
-        : [...visuals].sort((a, b) => a.order - b.order)
-    ).map((item, idx) => ({ ...item, order: idx }));
+    // 1. Order visuals (then pin Intro first / Final last)
+    const baseVisuals = mediaOrder === "random"
+      ? shuffleArray([...visuals])
+      : [...visuals].sort((a, b) => a.order - b.order);
+    const orderedVisuals = applyIntroFinalOrder(media, baseVisuals)
+      .map((item, idx) => ({ ...item, order: idx }));
 
     const audioNatural = naturalAudioDuration(media, sortedAudios);
     let visualSegments: VisualSegment[];
@@ -630,7 +630,8 @@ export function summarizeComposition(
   }
 
   // ── Manual / mixed mode ────────────────────────────────────────────────────
-  const visualSegments = computeVisualSegments(media, visuals);
+  const sortedVisuals  = applyIntroFinalOrder(media, visuals);
+  const visualSegments = computeVisualSegments(media, sortedVisuals);
   const totalVideoSeconds = Number(
     (visualSegments.length ? Math.max(...visualSegments.map((s) => s.endAt)) : 0).toFixed(2),
   );
